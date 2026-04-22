@@ -2,24 +2,26 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { requireWorkspaceMember } from "./workspace";
+import { applyBoardOp } from "./board";
+import type { CanvasOp } from "@/lib/types/canvas";
 
 export async function getWorkspaceProposals(
   workspaceId: string,
   userId: string,
   opts: {
-    documentId?: string;
+    boardId?: string;
     status?: string;
     cursor?: string;
     limit?: number;
   } = {}
 ) {
   await requireWorkspaceMember(workspaceId, userId);
-  const { documentId, status, cursor, limit = 20 } = opts;
+  const { boardId, status, cursor, limit = 20 } = opts;
 
   const proposals = await db.changeProposal.findMany({
     where: {
       workspaceId,
-      ...(documentId && { documentId }),
+      ...(boardId && { boardId }),
       ...(status && { status: status as "PENDING" | "ACCEPTED" | "REJECTED" | "COMMITTED" }),
     },
     orderBy: { createdAt: "desc" },
@@ -27,8 +29,7 @@ export async function getWorkspaceProposals(
     ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     include: {
       author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-      document: { select: { id: true, title: true, contentSnapshot: true } },
-      baseVersion: { select: { id: true, contentSnapshot: true, versionNumber: true } },
+      board: { select: { id: true, title: true } },
       votes: {
         include: {
           user: { select: { id: true, name: true } },
@@ -45,53 +46,6 @@ export async function getWorkspaceProposals(
   }
 
   return { proposals, nextCursor };
-}
-
-export async function createProposal(
-  workspaceId: string,
-  userId: string,
-  data: {
-    documentId: string;
-    patch: string;
-    baseVersionId?: string;
-    proposalType?: string;
-  }
-) {
-  await requireWorkspaceMember(workspaceId, userId, ["OWNER", "EDITOR"]);
-
-  const doc = await db.document.findFirst({
-    where: { id: data.documentId, workspaceId },
-  });
-  if (!doc) throw new Error("Document not found");
-
-  const proposal = await db.changeProposal.create({
-    data: {
-      documentId: data.documentId,
-      workspaceId,
-      authorId: userId,
-      baseVersionId: data.baseVersionId,
-      patch: data.patch,
-      proposalType: data.proposalType ?? "content_update",
-      status: "PENDING",
-    },
-    include: {
-      author: { select: { id: true, name: true, email: true } },
-      document: { select: { id: true, title: true } },
-    },
-  });
-
-  await db.activityLog.create({
-    data: {
-      workspaceId,
-      userId,
-      action: "PROPOSAL_CREATED",
-      entityType: "proposal",
-      entityId: proposal.id,
-      metadata: { documentId: data.documentId, documentTitle: doc.title },
-    },
-  });
-
-  return proposal;
 }
 
 export async function voteOnProposal(
@@ -156,10 +110,7 @@ async function commitOrRejectProposal(
   userId: string,
   status: "COMMITTED" | "REJECTED"
 ) {
-  const proposal = await db.changeProposal.findUnique({
-    where: { id: proposalId },
-    include: { document: true },
-  });
+  const proposal = await db.changeProposal.findUnique({ where: { id: proposalId } });
   if (!proposal) return;
 
   await db.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -168,59 +119,28 @@ async function commitOrRejectProposal(
       data: { status, committedAt: status === "COMMITTED" ? new Date() : undefined },
     });
 
-    if (status === "COMMITTED") {
-      const lastVersion = await tx.documentVersion.findFirst({
-        where: { documentId: proposal.documentId },
-        orderBy: { versionNumber: "desc" },
-      });
+    const action =
+      status === "COMMITTED" ? ("PROPOSAL_COMMITTED" as const) : ("PROPOSAL_REJECTED" as const);
 
-      const newVersionNumber = (lastVersion?.versionNumber ?? 0) + 1;
-      const patch = JSON.parse(proposal.patch);
-      const base = lastVersion?.contentSnapshot ?? proposal.document.contentSnapshot;
-
-      let newContent = base;
-      if (patch.content !== undefined) {
-        newContent = patch.content;
-      }
-
-      const version = await tx.documentVersion.create({
-        data: {
-          documentId: proposal.documentId,
-          versionNumber: newVersionNumber,
-          contentSnapshot: newContent,
-          patch: proposal.patch,
-          createdById: userId,
-        },
-      });
-
-      await tx.document.update({
-        where: { id: proposal.documentId },
-        data: {
-          contentSnapshot: newContent,
-          currentVersionId: version.id,
-        },
-      });
-
-      await tx.activityLog.create({
-        data: {
-          workspaceId,
-          userId,
-          action: "PROPOSAL_COMMITTED",
-          entityType: "proposal",
-          entityId: proposalId,
-          metadata: { documentId: proposal.documentId, versionNumber: newVersionNumber },
-        },
-      });
-    } else {
-      await tx.activityLog.create({
-        data: {
-          workspaceId,
-          userId,
-          action: "PROPOSAL_REJECTED",
-          entityType: "proposal",
-          entityId: proposalId,
-        },
-      });
-    }
+    await tx.activityLog.create({
+      data: {
+        workspaceId,
+        userId,
+        action,
+        entityType: "proposal",
+        entityId: proposalId,
+      },
+    });
   });
+
+  // If committed and it's a canvas op, apply it to the board
+  if (status === "COMMITTED" && proposal.boardId && proposal.operationType) {
+    try {
+      const op = JSON.parse(proposal.patch) as CanvasOp;
+      await applyBoardOp(proposal.boardId, workspaceId, userId, op);
+    } catch {
+      // If apply fails post-commit, log but don't throw
+      console.error("[proposal commit] Failed to apply canvas op", proposalId);
+    }
+  }
 }

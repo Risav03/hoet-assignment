@@ -40,7 +40,7 @@ export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-sidebar text-white">
       {/* Header */}
-      <header className="sticky top-0 z-50 flex items-center justify-between px-4 sm:px-8 h-[60px] bg-sidebar border-b border-sidebar-border">
+      <header className="sticky top-0 z-50 flex items-center justify-between px-4 sm:px-8 h-[60px] bg-sidebar border-b border-sidebar-border py-4">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center font-extrabold text-primary-foreground text-sm w-7 h-7 rounded-lg bg-primary">
             C

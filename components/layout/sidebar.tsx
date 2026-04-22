@@ -15,6 +15,7 @@ import {
   Plus,
   Building2,
   Menu,
+  LayoutGrid,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -68,6 +69,7 @@ function NavContent({
 
   const workspaceNav = workspaceSlug
     ? [
+        { href: `${base}/canvas`, icon: LayoutGrid, label: "Canvas" },
         { href: `${base}/documents`, icon: FolderOpen, label: "Documents" },
         { href: `${base}/ai-assistant`, icon: Bot, label: "AI Assistant" },
         { href: `${base}/proposals`, icon: GitPullRequest, label: "Proposals" },

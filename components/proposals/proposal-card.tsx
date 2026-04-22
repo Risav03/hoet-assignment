@@ -1,11 +1,9 @@
 "use client";
-import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Check, X, Loader2, FileText, GitPullRequest, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, X, Loader2, LayoutGrid, GitPullRequest } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ProposalDiff } from "./proposal-diff";
 import { useVoteProposal } from "@/lib/hooks/use-proposal-mutations";
 
 interface Vote {
@@ -18,15 +16,11 @@ interface Proposal {
   id: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED" | "COMMITTED";
   proposalType: string;
+  operationType: string;
   patch: string;
   createdAt: string;
   author: { id: string; name: string; email: string; avatarUrl?: string | null };
-  document: { id: string; title: string; contentSnapshot: string };
-  baseVersion?: {
-    id: string;
-    contentSnapshot: string;
-    versionNumber: number;
-  } | null;
+  board?: { id: string; title: string } | null;
   votes: Vote[];
 }
 
@@ -45,7 +39,6 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 export function ProposalCard({ proposal, userRole, userId, workspaceId }: ProposalCardProps) {
-  const [showDiff, setShowDiff] = useState(false);
   const { mutate: vote, isPending: voting, variables: votingDecision } = useVoteProposal(
     proposal.id,
     workspaceId
@@ -60,6 +53,13 @@ export function ProposalCard({ proposal, userRole, userId, workspaceId }: Propos
   const approvePct = totalVotes > 0 ? Math.round((approvals / totalVotes) * 100) : 0;
   const statusClass = STATUS_CLASS[proposal.status] ?? STATUS_CLASS.PENDING;
 
+  let parsedOp: { type?: string; payload?: unknown } = {};
+  try {
+    parsedOp = JSON.parse(proposal.patch) as typeof parsedOp;
+  } catch {
+    // ignore
+  }
+
   return (
     <div className="bg-card border border-border rounded-xl p-[18px] shadow-sm">
       {/* Header row */}
@@ -69,11 +69,10 @@ export function ProposalCard({ proposal, userRole, userId, workspaceId }: Propos
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Title */}
           <div className="flex items-start sm:items-center gap-2 mb-1.5 flex-wrap">
             <p className="text-sm font-bold text-foreground">
-              Change to{" "}
-              <span className="text-primary">{proposal.document.title}</span>
+              Canvas operation:{" "}
+              <span className="font-mono text-primary">{proposal.operationType}</span>
             </p>
             <span
               className={cn(
@@ -85,7 +84,6 @@ export function ProposalCard({ proposal, userRole, userId, workspaceId }: Propos
             </span>
           </div>
 
-          {/* Meta row */}
           <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
             <Avatar className="w-[18px] h-[18px]">
               <AvatarFallback className="text-[9px] font-bold bg-accent text-accent-foreground">
@@ -93,16 +91,32 @@ export function ProposalCard({ proposal, userRole, userId, workspaceId }: Propos
               </AvatarFallback>
             </Avatar>
             <span className="font-medium text-secondary-foreground">{proposal.author.name}</span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <FileText className="w-[11px] h-[11px]" />
-              {proposal.document.title}
-            </span>
+            {proposal.board && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1">
+                  <LayoutGrid className="w-[11px] h-[11px]" />
+                  {proposal.board.title}
+                </span>
+              </>
+            )}
             <span>·</span>
             <span>{formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}</span>
           </div>
         </div>
       </div>
+
+      {/* Op payload preview */}
+      {parsedOp.type && (
+        <div className="mb-4 p-3 rounded-lg bg-muted/50 border border-border">
+          <p className="text-[11px] font-mono text-muted-foreground font-medium mb-1">
+            {parsedOp.type}
+          </p>
+          <pre className="text-[10px] text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all">
+            {JSON.stringify(parsedOp.payload, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {/* Vote bar */}
       <div className="mb-4">
@@ -124,69 +138,42 @@ export function ProposalCard({ proposal, userRole, userId, workspaceId }: Propos
         </div>
       </div>
 
-      {/* View changes toggle + action buttons */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
-        {/* View changes */}
-        <button
-          onClick={() => setShowDiff((v) => !v)}
-          className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {showDiff ? (
-            <ChevronUp className="w-3.5 h-3.5" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5" />
+      {/* Action buttons */}
+      {canVote && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
+          {myVote && (
+            <span className="text-xs text-muted-foreground text-center sm:text-left">
+              You voted: {myVote.decision === "APPROVE" ? "✓ Approve" : "✗ Reject"}
+            </span>
           )}
-          {showDiff ? "Hide changes" : "View changes"}
-        </button>
-
-        {/* Vote actions */}
-        {canVote && (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
-            {myVote && (
-              <span className="text-xs text-muted-foreground text-center sm:text-left">
-                You voted: {myVote.decision === "APPROVE" ? "✓ Approve" : "✗ Reject"}
-              </span>
+          <Button
+            size="sm"
+            disabled={voting}
+            onClick={() => vote("APPROVE")}
+            className="font-semibold text-white bg-success rounded-lg text-xs h-[30px] px-3"
+          >
+            {voting && votingDecision === "APPROVE" ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Check className="w-3 h-3 mr-1" />
             )}
-            <Button
-              size="sm"
-              disabled={voting}
-              onClick={() => vote("APPROVE")}
-              className="font-semibold text-white bg-success rounded-lg text-xs h-[30px] px-3"
-            >
-              {voting && votingDecision === "APPROVE" ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Check className="w-3 h-3 mr-1" />
-              )}
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={voting}
-              onClick={() => vote("REJECT")}
-              className="rounded-lg text-xs h-[30px] px-3 text-muted-foreground border-border"
-            >
-              {voting && votingDecision === "REJECT" ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <X className="w-3 h-3 mr-1" />
-              )}
-              Reject
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Diff panel */}
-      {showDiff && (
-        <ProposalDiff
-          documentId={proposal.document.id}
-          documentTitle={proposal.document.title}
-          dbContent={proposal.document.contentSnapshot}
-          rawPatch={proposal.patch}
-          baseVersion={proposal.baseVersion}
-        />
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={voting}
+            onClick={() => vote("REJECT")}
+            className="rounded-lg text-xs h-[30px] px-3 text-muted-foreground border-border"
+          >
+            {voting && votingDecision === "REJECT" ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <X className="w-3 h-3 mr-1" />
+            )}
+            Reject
+          </Button>
+        </div>
       )}
     </div>
   );

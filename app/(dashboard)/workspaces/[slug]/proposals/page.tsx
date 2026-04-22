@@ -45,7 +45,7 @@ export default async function ProposalsPage({ params, searchParams }: PageProps)
         </div>
       </div>
 
-      {/* Segmented status tabs — horizontally scrollable on mobile */}
+      {/* Segmented status tabs */}
       <div className="overflow-x-auto -mx-5 px-5 md:-mx-0 md:px-0 mb-6">
         <div className="flex items-center w-max">
           <div className="flex items-center p-1 gap-1 bg-muted rounded-lg">
@@ -67,25 +67,31 @@ export default async function ProposalsPage({ params, searchParams }: PageProps)
         </div>
       </div>
 
-      {proposals.length === 0 || !activeTab ? (
+      {proposals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <GitPullRequest className="w-10 h-10 text-muted mb-3" />
           <h3 className="text-sm font-semibold text-secondary-foreground mb-1.5">No proposals</h3>
           <p className="text-[13px] text-muted-foreground text-center max-w-xs">
             {activeTab === "PENDING"
-              ? "No pending proposals. Editors can propose changes from the document editor."
+              ? "No pending proposals. Make changes on the canvas to create proposals."
               : `No ${activeTab.toLowerCase()} proposals yet.`}
           </p>
         </div>
       ) : (
         <div className="space-y-3 stagger">
-          {proposals.map((proposal: typeof proposals[0]) => (
+          {proposals.map((proposal) => (
             <ProposalCard
               key={proposal.id}
               proposal={{
-                ...proposal,
+                id: proposal.id,
+                status: proposal.status,
+                proposalType: proposal.proposalType,
+                operationType: proposal.operationType,
+                patch: proposal.patch,
                 createdAt: proposal.createdAt.toISOString(),
-                votes: proposal.votes.map((v: typeof proposal.votes[0]) => ({
+                author: proposal.author,
+                board: proposal.board,
+                votes: proposal.votes.map((v) => ({
                   id: v.id,
                   decision: v.decision,
                   user: v.user,

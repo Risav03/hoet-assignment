@@ -10,7 +10,7 @@ export async function getUserWorkspaces(userId: string) {
     include: {
       workspace: {
         include: {
-          _count: { select: { members: true, documents: true } },
+          _count: { select: { members: true, boards: true } },
         },
       },
     },
@@ -25,7 +25,7 @@ export async function getWorkspaceById(workspaceId: string, userId: string) {
       members: { some: { userId } },
     },
     include: {
-      _count: { select: { members: true, documents: true } },
+      _count: { select: { members: true, boards: true } },
     },
   });
 }
@@ -37,7 +37,7 @@ export async function getWorkspaceBySlug(slug: string, userId: string) {
       members: { some: { userId } },
     },
     include: {
-      _count: { select: { members: true, documents: true } },
+      _count: { select: { members: true, boards: true } },
     },
   });
 }

@@ -1,6 +1,36 @@
 "use client";
 import Dexie, { type Table } from "dexie";
+import type { CanvasNode, CanvasEdge, CanvasOp } from "@/lib/types/canvas";
 
+// ── Canvas types ──────────────────────────────────────────────────────────────
+
+export interface LocalBoardOp {
+  id?: number;
+  operationId: string;
+  boardId: string;
+  workspaceId: string;
+  userId: string;
+  op: CanvasOp;
+  status: "pending" | "syncing" | "committed" | "rejected";
+  retryCount: number;
+  createdAt: string;
+  processedAt?: string;
+  proposalId?: string;
+}
+
+export interface LocalBoardSnapshot {
+  id: string;
+  workspaceId: string;
+  title: string;
+  nodes: Record<string, CanvasNode>;
+  edges: Record<string, CanvasEdge>;
+  isArchived: boolean;
+  snapshotAt: string;
+}
+
+// ── Legacy stubs (kept for backward compat with editor/sync components) ───────
+
+/** @deprecated Document model removed from DB */
 export interface LocalDocument {
   id: string;
   workspaceId: string;
@@ -13,6 +43,7 @@ export interface LocalDocument {
   syncedAt?: string;
 }
 
+/** @deprecated Document model removed from DB */
 export interface LocalDraft {
   id: string;
   documentId: string;
@@ -21,6 +52,7 @@ export interface LocalDraft {
   savedAt: string;
 }
 
+/** @deprecated Use LocalBoardOp instead */
 export interface LocalSyncOperation {
   id?: number;
   operationId: string;
@@ -36,6 +68,7 @@ export interface LocalSyncOperation {
   processedAt?: string;
 }
 
+/** @deprecated Use Prisma proposals instead */
 export interface LocalProposal {
   id: string;
   documentId: string;
@@ -49,15 +82,22 @@ export interface LocalProposal {
   syncedAt?: string;
 }
 
-class CoWorkLocalDB extends Dexie {
+// ── Database class ─────────────────────────────────────────────────────────────
+
+class CanvasLocalDB extends Dexie {
+  boardOps!: Table<LocalBoardOp, number>;
+  boardSnapshots!: Table<LocalBoardSnapshot, string>;
+  // Legacy tables (kept so old Dexie migrations don't error)
   documents!: Table<LocalDocument, string>;
   drafts!: Table<LocalDraft, string>;
   syncQueue!: Table<LocalSyncOperation, number>;
   proposals!: Table<LocalProposal, string>;
 
   constructor() {
-    super("CoWorkDB");
+    super("CanvasDB");
     this.version(1).stores({
+      boardOps: "++id, operationId, boardId, workspaceId, status, createdAt",
+      boardSnapshots: "id, workspaceId, snapshotAt",
       documents: "id, workspaceId, updatedAt, isArchived",
       drafts: "id, documentId, workspaceId, savedAt",
       syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
@@ -66,15 +106,18 @@ class CoWorkLocalDB extends Dexie {
   }
 }
 
-let _localDB: CoWorkLocalDB | undefined;
+let _canvasDB: CanvasLocalDB | undefined;
 
-export function getLocalDB(): CoWorkLocalDB {
+export function getLocalDB(): CanvasLocalDB {
   if (typeof window === "undefined") throw new Error("LocalDB only available in browser");
-  if (!_localDB) _localDB = new CoWorkLocalDB();
-  return _localDB;
+  if (!_canvasDB) _canvasDB = new CanvasLocalDB();
+  return _canvasDB;
 }
 
-export const localDB = new Proxy({} as CoWorkLocalDB, {
+/** @deprecated Use getLocalDB() */
+export const getCanvasDB = getLocalDB;
+
+export const localDB = new Proxy({} as CanvasLocalDB, {
   get(_, prop) {
     const db = getLocalDB();
     const val = (db as unknown as Record<string | symbol, unknown>)[prop];

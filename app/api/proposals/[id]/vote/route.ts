@@ -32,6 +32,8 @@ export async function POST(
         type: eventType,
         payload: {
           proposalId: id,
+          boardId: proposal.boardId,
+          operationType: proposal.operationType,
           newStatus: result.newStatus,
           voterId: session.user.id,
           decision: data.decision,
@@ -39,13 +41,6 @@ export async function POST(
           rejections: result.rejections,
         },
       });
-
-      if (result.newStatus === "COMMITTED") {
-        emitSSEEvent(proposal.workspaceId, {
-          type: "document_version_created",
-          payload: { documentId: proposal.documentId, proposalId: id },
-        });
-      }
     }
 
     return NextResponse.json(result);

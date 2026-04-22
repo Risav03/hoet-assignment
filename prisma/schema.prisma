@@ -7,6 +7,182 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id              String            @id @default(cuid())
+  name            String
+  email           String            @unique
+  passwordHash    String
+  avatarUrl       String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  activityLogs    ActivityLog[]
+  proposals       ChangeProposal[]
+  votes           ProposalVote[]
+  syncOperations  SyncOperation[]
+  ownedWorkspaces Workspace[]
+  workspaces      WorkspaceMember[]
+}
+
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  slug        String            @unique
+  ownerId     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  activityLog ActivityLog[]
+  boards      Board[]
+  proposals   ChangeProposal[]
+  syncOps     SyncOperation[]
+  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members     WorkspaceMember[]
+
+  @@index([ownerId])
+}
+
+model Board {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  title         String
+  isArchived    Boolean          @default(false)
+  createdById   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  BoardEdge     BoardEdge[]
+  BoardNode     BoardNode[]
+  proposals     ChangeProposal[] @relation("BoardProposals")
+  SyncOperation SyncOperation[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, isArchived])
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(VIEWER)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+model ChangeProposal {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  authorId      String
+  patch         String
+  status        ProposalStatus @default(PENDING)
+  committedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  boardId       String
+  operationType OperationType
+  proposalType  String         @default("node_op")
+  author        User           @relation(fields: [authorId], references: [id])
+  board         Board          @relation("BoardProposals", fields: [boardId], references: [id], onDelete: Cascade)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  votes         ProposalVote[]
+
+  @@index([workspaceId])
+  @@index([boardId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
+}
+
+model ProposalVote {
+  id         String         @id @default(cuid())
+  proposalId String
+  userId     String
+  decision   VoteDecision
+  createdAt  DateTime       @default(now())
+  proposal   ChangeProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  user       User           @relation(fields: [userId], references: [id])
+
+  @@unique([proposalId, userId])
+  @@index([proposalId])
+}
+
+model SyncOperation {
+  id             String        @id @default(cuid())
+  workspaceId    String
+  userId         String
+  payload        Json
+  status         SyncStatus    @default(PENDING)
+  retryCount     Int           @default(0)
+  clientChecksum String?
+  operationId    String        @unique
+  createdAt      DateTime      @default(now())
+  processedAt    DateTime?
+  boardId        String
+  operationType  OperationType
+  Board          Board         @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id])
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([boardId])
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+model ActivityLog {
+  id          String         @id @default(cuid())
+  workspaceId String
+  userId      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+  action      ActivityAction
+  user        User           @relation(fields: [userId], references: [id])
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([userId])
+}
+
+model BoardEdge {
+  id                                      String    @id
+  boardId                                 String
+  sourceId                                String
+  targetId                                String
+  label                                   String?
+  createdAt                               DateTime  @default(now())
+  Board                                   Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  BoardNode_BoardEdge_sourceIdToBoardNode BoardNode @relation("BoardEdge_sourceIdToBoardNode", fields: [sourceId], references: [id], onDelete: Cascade)
+  BoardNode_BoardEdge_targetIdToBoardNode BoardNode @relation("BoardEdge_targetIdToBoardNode", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, sourceId, targetId])
+  @@index([boardId])
+}
+
+model BoardNode {
+  id                                      String      @id
+  boardId                                 String
+  type                                    String
+  x                                       Float
+  y                                       Float
+  width                                   Float       @default(200)
+  height                                  Float       @default(120)
+  content                                 Json
+  createdAt                               DateTime    @default(now())
+  updatedAt                               DateTime
+  BoardEdge_BoardEdge_sourceIdToBoardNode BoardEdge[] @relation("BoardEdge_sourceIdToBoardNode")
+  BoardEdge_BoardEdge_targetIdToBoardNode BoardEdge[] @relation("BoardEdge_targetIdToBoardNode")
+  Board                                   Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+}
+
 enum WorkspaceRole {
   OWNER
   EDITOR
@@ -33,11 +209,14 @@ enum SyncStatus {
 }
 
 enum OperationType {
-  CREATE_DOCUMENT
-  UPDATE_DOCUMENT
-  DELETE_DOCUMENT
-  ARCHIVE_DOCUMENT
-  RESTORE_DOCUMENT
+  CREATE_BOARD
+  DELETE_BOARD
+  CREATE_NODE
+  UPDATE_NODE
+  MOVE_NODE
+  DELETE_NODE
+  CONNECT_NODES
+  DISCONNECT_NODES
 }
 
 enum ActivityAction {
@@ -45,190 +224,17 @@ enum ActivityAction {
   MEMBER_INVITED
   MEMBER_REMOVED
   MEMBER_ROLE_UPDATED
-  DOCUMENT_CREATED
-  DOCUMENT_UPDATED
-  DOCUMENT_ARCHIVED
-  DOCUMENT_RESTORED
-  DOCUMENT_DELETED
+  BOARD_CREATED
+  BOARD_UPDATED
+  BOARD_ARCHIVED
+  BOARD_DELETED
+  NODE_CREATED
+  NODE_UPDATED
+  NODE_DELETED
+  EDGE_CREATED
+  EDGE_DELETED
   PROPOSAL_CREATED
   PROPOSAL_ACCEPTED
   PROPOSAL_REJECTED
   PROPOSAL_COMMITTED
-  VERSION_RESTORED
-}
-
-model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  workspaces       WorkspaceMember[]
-  ownedWorkspaces  Workspace[]
-  proposals        ChangeProposal[]
-  votes            ProposalVote[]
-  syncOperations   SyncOperation[]
-  activityLogs     ActivityLog[]
-  documentVersions DocumentVersion[]
-}
-
-model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  ownerId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members     WorkspaceMember[]
-  documents   Document[]
-  proposals   ChangeProposal[]
-  syncOps     SyncOperation[]
-  activityLog ActivityLog[]
-
-  @@index([ownerId])
-}
-
-model WorkspaceMember {
-  id          String        @id @default(cuid())
-  workspaceId String
-  userId      String
-  role        WorkspaceRole @default(VIEWER)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([workspaceId, userId])
-  @@index([workspaceId])
-  @@index([userId])
-}
-
-model Document {
-  id               String   @id @default(cuid())
-  workspaceId      String
-  title            String
-  contentSnapshot  String   @default("")
-  currentVersionId String?
-  folderId         String?
-  tags             String[]
-  isArchived       Boolean  @default(false)
-  createdById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  versions  DocumentVersion[]
-  proposals ChangeProposal[]
-  syncOps   SyncOperation[]
-
-  @@index([workspaceId])
-  @@index([workspaceId, isArchived])
-  @@index([workspaceId, createdAt])
-}
-
-model DocumentVersion {
-  id              String   @id @default(cuid())
-  documentId      String
-  versionNumber   Int
-  contentSnapshot String
-  patch           String?
-  createdById     String
-  createdAt       DateTime @default(now())
-
-  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  createdBy User     @relation(fields: [createdById], references: [id])
-
-  proposals ChangeProposal[] @relation("BaseVersion")
-
-  @@unique([documentId, versionNumber])
-  @@index([documentId])
-  @@index([documentId, versionNumber])
-  @@index([documentId, createdAt])
-}
-
-model ChangeProposal {
-  id            String         @id @default(cuid())
-  documentId    String
-  workspaceId   String
-  authorId      String
-  baseVersionId String?
-  patch         String
-  proposalType  String         @default("content_update")
-  status        ProposalStatus @default(PENDING)
-  committedAt   DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  document    Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  author      User             @relation(fields: [authorId], references: [id])
-  baseVersion DocumentVersion? @relation("BaseVersion", fields: [baseVersionId], references: [id])
-  votes       ProposalVote[]
-
-  @@index([workspaceId])
-  @@index([documentId])
-  @@index([workspaceId, status])
-  @@index([workspaceId, createdAt])
-}
-
-model ProposalVote {
-  id         String       @id @default(cuid())
-  proposalId String
-  userId     String
-  decision   VoteDecision
-  createdAt  DateTime     @default(now())
-
-  proposal ChangeProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  user     User           @relation(fields: [userId], references: [id])
-
-  @@unique([proposalId, userId])
-  @@index([proposalId])
-}
-
-model SyncOperation {
-  id              String        @id @default(cuid())
-  documentId      String
-  workspaceId     String
-  userId          String
-  operationType   OperationType
-  payload         Json
-  status          SyncStatus    @default(PENDING)
-  retryCount      Int           @default(0)
-  clientChecksum  String?
-  operationId     String        @unique
-  createdAt       DateTime      @default(now())
-  processedAt     DateTime?
-
-  document  Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id])
-
-  @@index([workspaceId])
-  @@index([documentId])
-  @@index([userId, status])
-  @@index([status, createdAt])
-}
-
-model ActivityLog {
-  id          String         @id @default(cuid())
-  workspaceId String
-  userId      String
-  action      ActivityAction
-  entityType  String
-  entityId    String
-  metadata    Json?
-  createdAt   DateTime       @default(now())
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id])
-
-  @@index([workspaceId])
-  @@index([workspaceId, createdAt])
-  @@index([userId])
 }

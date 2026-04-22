@@ -45,21 +45,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Fetch referenced docs — hard-scoped to this workspace
-    let docs: { id: string; title: string; contentSnapshot: string; tags: string[] }[] = [];
-    if (referencedDocumentIds.length > 0) {
-      docs = await db.document.findMany({
-        where: { id: { in: referencedDocumentIds }, workspaceId },
-        select: { id: true, title: true, contentSnapshot: true, tags: true },
-      });
-      // Reject if any requested doc was not found in this workspace
-      if (docs.length !== referencedDocumentIds.length) {
-        return NextResponse.json(
-          { error: "One or more referenced documents are not in this workspace" },
-          { status: 403 }
-        );
-      }
-    }
+    // Documents have been replaced by canvas boards — no doc context available
+    const docs: { id: string; title: string; contentSnapshot: string; tags: string[] }[] = [];
+    void referencedDocumentIds;
 
     const systemPrompt = [
       `You are the AI assistant for workspace "${workspace.name}".`,

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getCachedUserWorkspaces } from "@/lib/dal/cached";
 import Link from "next/link";
-import { Users, FileText, Clock, Plus } from "lucide-react";
+import { Users, LayoutGrid, Clock, Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { CreateWorkspaceDialog } from "@/components/workspace/create-workspace-dialog";
 import { cn } from "@/lib/utils";
@@ -72,8 +72,8 @@ export default async function DashboardPage() {
                     {m.workspace._count.members}
                   </span>
                   <span className="flex items-center gap-1">
-                    <FileText className="w-3 h-3" />
-                    {m.workspace._count.documents}
+                    <LayoutGrid className="w-3 h-3" />
+                    {m.workspace._count.boards}
                   </span>
                   <span className="flex items-center gap-1 ml-auto">
                     <Clock className="w-3 h-3" />

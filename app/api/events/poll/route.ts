@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     const [proposals, activity] = await Promise.all([
       db.changeProposal.findMany({
         where: { workspaceId, updatedAt: { gte: sinceDate } },
-        select: { id: true, status: true, documentId: true, updatedAt: true },
+        select: { id: true, status: true, boardId: true, operationType: true, updatedAt: true },
         orderBy: { updatedAt: "desc" },
         take: 20,
       }),

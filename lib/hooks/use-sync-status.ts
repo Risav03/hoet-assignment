@@ -11,9 +11,9 @@ export function useSyncStatus() {
   useEffect(() => {
     async function checkStatus() {
       try {
-        const pending = await localDB.syncQueue
+        const pending = await localDB.boardOps
           .where("status")
-          .anyOf(["pending", "failed"])
+          .anyOf(["pending"])
           .count();
         setPendingCount(pending);
         if (pending > 0) {

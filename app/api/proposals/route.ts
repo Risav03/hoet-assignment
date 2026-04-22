@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { createProposal, getWorkspaceProposals } from "@/lib/dal/proposal";
-import { createProposalSchema, listProposalsSchema } from "@/lib/validation";
+import { getWorkspaceProposals } from "@/lib/dal/proposal";
 import { ZodError } from "zod";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { z } from "zod";
+
+const listProposalsSchema = z.object({
+  workspaceId: z.string().min(1),
+  boardId: z.string().optional(),
+  status: z.enum(["PENDING", "ACCEPTED", "REJECTED", "COMMITTED"]).optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().min(1).max(50).default(20),
+});
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -13,7 +20,7 @@ export async function GET(req: Request) {
   try {
     const opts = listProposalsSchema.parse({
       workspaceId: url.searchParams.get("workspaceId"),
-      documentId: url.searchParams.get("documentId") ?? undefined,
+      boardId: url.searchParams.get("boardId") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
       cursor: url.searchParams.get("cursor") ?? undefined,
       limit: url.searchParams.get("limit") ?? 20,
@@ -30,47 +37,5 @@ export async function GET(req: Request) {
     }
     console.error("[proposals GET]", err);
     return NextResponse.json({ error: "Failed to fetch proposals" }, { status: 500 });
-  }
-}
-
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  try {
-    const body = await req.json();
-    const workspaceId = body.workspaceId as string;
-    if (!workspaceId) {
-      return NextResponse.json({ error: "workspaceId is required" }, { status: 422 });
-    }
-
-    const data = createProposalSchema.parse(body);
-    const proposal = await createProposal(workspaceId, session.user.id, {
-      documentId: data.documentId,
-      patch: data.patch,
-      baseVersionId: data.baseVersionId,
-      proposalType: data.proposalType,
-    });
-
-    emitSSEEvent(workspaceId, {
-      type: "proposal_created",
-      payload: {
-        proposalId: proposal.id,
-        documentId: data.documentId,
-        authorId: session.user.id,
-      },
-    });
-
-    return NextResponse.json(proposal, { status: 201 });
-  } catch (err) {
-    if (err instanceof ZodError) {
-      return NextResponse.json({ error: "Validation error", details: err.flatten() }, { status: 422 });
-    }
-    const msg = err instanceof Error ? err.message : "";
-    if (msg.includes("Insufficient") || msg.includes("Not a workspace") || msg.includes("Viewer")) {
-      return NextResponse.json({ error: msg }, { status: 403 });
-    }
-    console.error("[proposals POST]", err);
-    return NextResponse.json({ error: "Failed to create proposal" }, { status: 500 });
   }
 }
