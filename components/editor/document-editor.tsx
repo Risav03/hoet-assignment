@@ -14,12 +14,13 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles, FileText, Tag, Clock } from "lucide-react";
+import { ArrowLeft, Tag, Clock, FileText, PanelRight, Save, Send } from "lucide-react";
 import { createPatch } from "@/lib/sync/differ";
 import { useSSE } from "@/lib/hooks/use-sse";
 import { useSyncEngine } from "@/lib/hooks/use-sync-engine";
 import Link from "next/link";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface Document {
   id: string;
@@ -50,13 +51,6 @@ interface DocumentEditorProps {
 }
 
 type EditorView = "edit" | "preview" | "history";
-
-const AI_TOOLS = [
-  { label: "Summarize", action: "summarize" },
-  { label: "Action items", action: "action_items" },
-  { label: "Rewrite", action: "rewrite" },
-  { label: "Explain", action: "explain" },
-];
 
 export function DocumentEditor({
   document,
@@ -105,9 +99,6 @@ export function DocumentEditor({
         });
         setContent(draft);
       } else {
-        // No draft (or draft matches) — keep the editor in sync with the
-        // server snapshot. This matters after a restore/refresh where the
-        // snapshot changes but local `content` state would otherwise stay stale.
         setContent(document.contentSnapshot);
       }
     });
@@ -166,43 +157,157 @@ export function DocumentEditor({
 
   const VIEWS: EditorView[] = ["edit", "preview", "history"];
 
+  /* Right-panel content (shared between persistent aside and mobile Sheet) */
+  const PanelContent = (
+    <div className="p-5 space-y-6">
+      {/* Details */}
+      <section>
+        <h3 className="mb-3 uppercase text-[10px] font-bold tracking-[0.06em] text-muted-foreground">
+          Details
+        </h3>
+        <div className="space-y-2">
+          {[
+            {
+              label: "Created",
+              value: document.createdAt ? format(new Date(document.createdAt), "MMM d, yyyy") : "—",
+              icon: Clock,
+            },
+            {
+              label: "Updated",
+              value: document.updatedAt ? format(new Date(document.updatedAt), "MMM d, yyyy") : "—",
+              icon: FileText,
+            },
+            {
+              label: "Versions",
+              value: String(versions.length),
+              icon: Clock,
+            },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <span className="text-xs font-medium text-foreground">{value}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Tags */}
+      {document.tags.length > 0 && (
+        <section>
+          <h3 className="mb-3 uppercase flex items-center gap-1.5 text-[10px] font-bold tracking-[0.06em] text-muted-foreground">
+            <Tag className="w-[10px] h-[10px]" />
+            Tags
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {document.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full px-2.5 py-0.5 font-semibold text-[11px] bg-muted text-secondary-foreground border border-border"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex flex-col" style={{ height: "100vh" }}>
-      {/* Top bar — 52px */}
-      <header
-        className="flex items-center gap-3 px-6 shrink-0"
-        style={{
-          height: 52,
-          background: "#ffffff",
-          borderBottom: "1px solid #e4e4e7",
-        }}
-      >
-        {/* Left: breadcrumb */}
-        <div className="flex items-center gap-2 min-w-0">
-          <Link href={`/workspaces/${workspaceSlug ?? document.workspaceId}/documents`}>
-            <button
-              className="flex items-center gap-1 transition-colors"
-              style={{ color: "#71717a", fontSize: 13, fontWeight: 500 }}
-            >
-              <ArrowLeft style={{ width: 14, height: 14 }} />
-              Documents
-            </button>
-          </Link>
-          <span style={{ color: "#d4d4d8" }}>/</span>
-          <span
-            className="truncate max-w-[200px]"
-            style={{ fontSize: 13, fontWeight: 600, color: "#18181b" }}
-          >
-            {title}
-          </span>
+    <div className="flex flex-col h-[100dvh]">
+      {/* Top bar — mobile: two rows, desktop: single row */}
+      <header className="bg-card border-b border-border shrink-0">
+        {/* Row 1: breadcrumb + actions */}
+        <div className="flex items-center gap-2 px-3 sm:px-6 h-[52px]">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Link href={`/workspaces/${workspaceSlug ?? document.workspaceId}/documents`}>
+              <button className="flex items-center gap-1 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Documents</span>
+              </button>
+            </Link>
+            <span className="text-border hidden sm:inline">/</span>
+            <span className="truncate max-w-[140px] sm:max-w-[200px] text-[13px] font-semibold text-foreground">
+              {title}
+            </span>
+          </div>
+
+          {/* Right actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <DraftAutoSave
+              documentId={document.id}
+              workspaceId={document.workspaceId}
+              content={content}
+            />
+            {previewVersion && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
+                v{previewVersion.versionNumber}
+              </span>
+            )}
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
+              Draft
+            </span>
+            {canEdit && !previewVersion && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="rounded-lg text-xs font-semibold h-8"
+                >
+                  {saving ? (
+                    "Saving…"
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5 sm:mr-1" />
+                      <span className="hidden sm:inline">Save</span>
+                    </>
+                  )}
+                </Button>
+                {membersCount > 1 ? (
+                  <Button
+                    size="sm"
+                    onClick={handlePropose}
+                    disabled={proposing}
+                    className="font-semibold text-primary-foreground bg-primary rounded-lg text-xs h-8 shadow-[0_1px_2px_rgba(79,70,229,.25)]"
+                  >
+                    {proposing ? (
+                      "Submitting…"
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5 sm:mr-1" />
+                        <span className="hidden sm:inline">Propose</span>
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <span className="hidden sm:inline text-xs text-muted-foreground italic">
+                    Only collaborator
+                  </span>
+                )}
+              </>
+            )}
+
+            {/* Info/panel toggle on mobile (<lg) */}
+            <Sheet>
+              <SheetTrigger className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:bg-muted transition-colors">
+                <PanelRight className="w-4 h-4" />
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px] p-0">
+                <SheetHeader className="px-5 pt-5 pb-0">
+                  <SheetTitle>Document Info</SheetTitle>
+                </SheetHeader>
+                {PanelContent}
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
 
-        {/* Center: Edit / Preview / History segmented tabs */}
-        <div className="flex items-center mx-auto">
-          <div
-            className="flex items-center p-0.5 gap-0.5"
-            style={{ background: "#f4f4f5", borderRadius: 8 }}
-          >
+        {/* Row 2: segmented view tabs (always visible, scrollable on tiny screens) */}
+        <div className="flex items-center px-3 sm:px-6 pb-2 overflow-x-auto">
+          <div className="flex items-center p-0.5 gap-0.5 bg-muted rounded-lg">
             {VIEWS.map((v) => (
               <button
                 key={v}
@@ -210,107 +315,34 @@ export function DocumentEditor({
                   setView(v);
                   if (v !== "history") setPreviewVersion(null);
                 }}
-                className="transition-all font-semibold capitalize"
-                style={{
-                  padding: "4px 14px",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  background: view === v ? "#ffffff" : "transparent",
-                  color: view === v ? "#18181b" : "#71717a",
-                  boxShadow: view === v ? "0 1px 3px rgba(0,0,0,.08)" : "none",
-                  border: "none",
-                  cursor: "pointer",
-                }}
+                className={cn(
+                  "transition-all font-semibold capitalize text-xs px-3.5 py-1 rounded-md whitespace-nowrap",
+                  view === v
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                )}
               >
                 {v}
               </button>
             ))}
           </div>
         </div>
-
-        {/* Right: Draft + autosave + actions */}
-        <div className="flex items-center gap-2 ml-auto">
-          <DraftAutoSave
-            documentId={document.id}
-            workspaceId={document.workspaceId}
-            content={content}
-          />
-          {previewVersion && (
-            <span
-              className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-              style={{ background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }}
-            >
-              v{previewVersion.versionNumber}
-            </span>
-          )}
-          <span
-            className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-            style={{ background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }}
-          >
-            Draft
-          </span>
-          {canEdit && !previewVersion && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSave}
-                disabled={saving}
-                style={{ borderRadius: 8, fontSize: 12, fontWeight: 600 }}
-              >
-                {saving ? "Saving…" : "Save"}
-              </Button>
-              {membersCount > 1 ? (
-                <Button
-                  size="sm"
-                  onClick={handlePropose}
-                  disabled={proposing}
-                  className="font-semibold text-white"
-                  style={{
-                    background: "#4f46e5",
-                    borderRadius: 8,
-                    fontSize: 12,
-                    boxShadow: "0 1px 2px rgba(79,70,229,.25)",
-                  }}
-                >
-                  {proposing ? "Submitting…" : "Propose"}
-                </Button>
-              ) : (
-                <span style={{ fontSize: 12, color: "#a1a1aa", fontStyle: "italic" }}>
-                  Only collaborator
-                </span>
-              )}
-            </>
-          )}
-        </div>
       </header>
 
       {/* Editor area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Main editor */}
-        <div
-          className="flex-1 overflow-y-auto"
-          style={{ background: "#ffffff", padding: "40px 60px" }}
-        >
+        <div className="flex-1 overflow-y-auto bg-card px-4 py-6 sm:px-10 sm:py-10">
           {view === "history" ? (
             previewVersion ? (
-              <div style={{ maxWidth: 680 }}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b" }}>
-                      Preview
-                    </h2>
-                    <span
-                      className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                      style={{
-                        background: "#fffbeb",
-                        color: "#92400e",
-                        border: "1px solid #fde68a",
-                      }}
-                    >
+              <div className="max-w-[680px]">
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base font-bold text-foreground">Preview</h2>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
                       v{previewVersion.versionNumber}
                     </span>
-                    <span style={{ fontSize: 12, color: "#71717a" }}>
+                    <span className="text-xs text-muted-foreground">
                       by {previewVersion.createdBy.name}
                       {" · "}
                       {format(new Date(previewVersion.createdAt), "MMM d, yyyy HH:mm")}
@@ -324,16 +356,7 @@ export function DocumentEditor({
                     Back to history
                   </Button>
                 </div>
-                <div
-                  style={{
-                    fontSize: 28,
-                    fontWeight: 800,
-                    color: "#18181b",
-                    marginBottom: 24,
-                  }}
-                >
-                  {title}
-                </div>
+                <div className="text-[28px] font-extrabold text-foreground mb-6">{title}</div>
                 <RichTextEditor
                   content={previewVersion.contentSnapshot}
                   onChange={() => {}}
@@ -342,10 +365,8 @@ export function DocumentEditor({
                 />
               </div>
             ) : (
-              <div style={{ maxWidth: 560 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b", marginBottom: 16 }}>
-                  Version History
-                </h2>
+              <div className="max-w-[560px]">
+                <h2 className="text-base font-bold text-foreground mb-4">Version History</h2>
                 <VersionTimeline
                   versions={versions}
                   documentId={document.id}
@@ -357,20 +378,13 @@ export function DocumentEditor({
               </div>
             )
           ) : (
-            <div style={{ maxWidth: 680 }}>
+            <div className="max-w-[680px]">
               {/* Title */}
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 disabled={!canEdit || view === "preview" || !!previewVersion}
-                className="border-0 shadow-none focus-visible:ring-0 px-0 mb-6"
-                style={{
-                  fontSize: 28,
-                  fontWeight: 800,
-                  color: "#18181b",
-                  background: "transparent",
-                  borderBottom: "none",
-                }}
+                className="border-0 shadow-none focus-visible:ring-0 px-0 mb-6 text-[28px] font-extrabold text-foreground bg-transparent"
                 placeholder="Untitled document"
               />
               <RichTextEditor
@@ -383,131 +397,9 @@ export function DocumentEditor({
           )}
         </div>
 
-        {/* Right panel — 240px */}
-        <aside
-          className="shrink-0 overflow-y-auto"
-          style={{
-            width: 240,
-            background: "#fafafa",
-            borderLeft: "1px solid #e4e4e7",
-            padding: 20,
-          }}
-        >
-          {/* Details */}
-          <section className="mb-6">
-            <h3
-              className="mb-3 uppercase"
-              style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "#a1a1aa" }}
-            >
-              Details
-            </h3>
-            <div className="space-y-2">
-              {[
-                {
-                  label: "Created",
-                  value: document.createdAt
-                    ? format(new Date(document.createdAt), "MMM d, yyyy")
-                    : "—",
-                  icon: Clock,
-                },
-                {
-                  label: "Updated",
-                  value: document.updatedAt
-                    ? format(new Date(document.updatedAt), "MMM d, yyyy")
-                    : "—",
-                  icon: FileText,
-                },
-                {
-                  label: "Versions",
-                  value: String(versions.length),
-                  icon: Clock,
-                },
-              ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span style={{ fontSize: 12, color: "#71717a" }}>{label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#18181b" }}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Tags */}
-          {document.tags.length > 0 && (
-            <section className="mb-6">
-              <h3
-                className="mb-3 uppercase flex items-center gap-1.5"
-                style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "#a1a1aa" }}
-              >
-                <Tag style={{ width: 10, height: 10 }} />
-                Tags
-              </h3>
-              <div className="flex flex-wrap gap-1.5">
-                {document.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full px-2.5 py-0.5 font-semibold"
-                    style={{
-                      fontSize: 11,
-                      background: "#f4f4f5",
-                      color: "#52525b",
-                      border: "1px solid #e4e4e7",
-                    }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* AI Tools */}
-          {/* <section>
-            <h3
-              className="mb-3 uppercase flex items-center gap-1.5"
-              style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "#a1a1aa" }}
-            >
-              <Sparkles style={{ width: 10, height: 10 }} />
-              AI Tools
-            </h3>
-            <div className="space-y-1.5">
-              {AI_TOOLS.map((tool) => (
-                <Sheet key={tool.action}>
-                  <SheetTrigger
-                    className="w-full flex items-center gap-2 transition-colors text-left"
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e4e4e7",
-                      borderRadius: 7,
-                      padding: "7px 10px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "#18181b",
-                      cursor: "pointer",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#c7d2fe";
-                      (e.currentTarget as HTMLButtonElement).style.background = "#eef2ff";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#e4e4e7";
-                      (e.currentTarget as HTMLButtonElement).style.background = "#ffffff";
-                    }}
-                  >
-                    <Sparkles style={{ width: 13, height: 13, color: "#818cf8" }} />
-                    {tool.label}
-                  </SheetTrigger>
-                  <SheetContent className="w-80">
-                    <SheetHeader>
-                      <SheetTitle>{tool.label}</SheetTitle>
-                    </SheetHeader>
-                    <div className="mt-4 text-sm text-muted-foreground">
-                      AI {tool.label.toLowerCase()} coming soon.
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              ))}
-            </div>
-          </section> */}
+        {/* Right panel — always visible on lg+, hidden on smaller screens (use Sheet trigger instead) */}
+        <aside className="hidden lg:block shrink-0 w-[240px] overflow-y-auto bg-secondary border-l border-border">
+          {PanelContent}
         </aside>
       </div>
     </div>

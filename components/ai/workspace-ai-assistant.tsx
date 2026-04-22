@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sparkles, Send, Loader2, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 interface DocSuggestion {
   id: string;
@@ -48,8 +49,7 @@ function MessageContent({
       <Link
         key={match.index}
         href={`/workspaces/${workspaceSlug}/documents/${docId}`}
-        className="underline underline-offset-2 hover:opacity-80 font-bold"
-        style={{ color: "#ffffff" }}
+        className="underline underline-offset-2 hover:opacity-80 font-bold text-primary-foreground"
       >
         @{title}
       </Link>
@@ -240,75 +240,41 @@ export function WorkspaceAiAssistant({
   }, []);
 
   return (
-    <div className="flex flex-col" style={{ height: "100%", background: "#fafafa" }}>
-      {/* Top bar — 52px */}
-      <div
-        className="flex items-center gap-3 px-6 shrink-0"
-        style={{
-          height: 52,
-          background: "#ffffff",
-          borderBottom: "1px solid #e4e4e7",
-        }}
-      >
-        <div
-          className="flex items-center justify-center shrink-0"
-          style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff" }}
-        >
-          <Sparkles style={{ width: 15, height: 15, color: "#818cf8" }} />
+    <div className="flex flex-col h-full bg-secondary">
+      {/* Top bar */}
+      <div className="flex items-center gap-3 px-4 sm:px-6 shrink-0 h-[52px] bg-card border-b border-border">
+        <div className="flex items-center justify-center shrink-0 w-8 h-8 rounded-lg bg-accent">
+          <Sparkles className="w-[15px] h-[15px] text-[#818cf8]" />
         </div>
         <div>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>AI Assistant</p>
+          <p className="text-sm font-bold text-foreground">AI Assistant</p>
         </div>
-        <span
-          className="ml-2 rounded-full px-2.5 py-0.5 font-semibold text-xs"
-          style={{ background: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" }}
-        >
+        <span className="ml-2 rounded-full px-2.5 py-0.5 font-semibold text-xs bg-muted text-secondary-foreground border border-border">
           {workspaceName}
         </span>
       </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1" ref={scrollRef}>
-        <div style={{ padding: "28px 40px" }}>
+        <div className="px-4 sm:px-10 py-6 sm:py-7">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center text-center py-20">
-              <div
-                className="flex items-center justify-center mb-5"
-                style={{ width: 52, height: 52, borderRadius: 16, background: "#eef2ff" }}
-              >
-                <Sparkles style={{ width: 22, height: 22, color: "#818cf8" }} />
+            <div className="flex flex-col items-center text-center py-16 sm:py-20">
+              <div className="flex items-center justify-center mb-5 w-[52px] h-[52px] rounded-2xl bg-accent">
+                <Sparkles className="w-[22px] h-[22px] text-[#818cf8]" />
               </div>
-              <p style={{ fontSize: 15, fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
+              <p className="text-[15px] font-semibold text-foreground mb-1.5">
                 How can I help you today?
               </p>
-              <p style={{ fontSize: 13, color: "#71717a", marginBottom: 24 }}>
+              <p className="text-[13px] text-muted-foreground mb-6">
                 Type @ to reference a document from{" "}
-                <span style={{ fontWeight: 600, color: "#3f3f46" }}>{workspaceName}</span>
+                <span className="font-semibold text-secondary-foreground">{workspaceName}</span>
               </p>
-              <div className="flex flex-wrap gap-2 justify-center" style={{ maxWidth: 480 }}>
+              <div className="flex flex-wrap gap-2 justify-center max-w-[480px]">
                 {SUGGESTION_CHIPS.map((s) => (
                   <button
                     key={s}
                     onClick={() => setInput(s)}
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      padding: "6px 16px",
-                      borderRadius: 20,
-                      border: "1px solid #e4e4e7",
-                      background: "#ffffff",
-                      color: "#3f3f46",
-                      cursor: "pointer",
-                      transition: "all 150ms",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#c7d2fe";
-                      (e.currentTarget as HTMLButtonElement).style.background = "#eef2ff";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#e4e4e7";
-                      (e.currentTarget as HTMLButtonElement).style.background = "#ffffff";
-                    }}
+                    className="text-xs font-semibold px-4 py-1.5 rounded-full border border-border bg-card text-secondary-foreground hover:border-accent-border hover:bg-accent transition-colors"
                   >
                     {s}
                   </button>
@@ -316,43 +282,29 @@ export function WorkspaceAiAssistant({
               </div>
             </div>
           ) : (
-            <div className="space-y-5" style={{ maxWidth: 680, margin: "0 auto" }}>
+            <div className="space-y-5 max-w-[680px] mx-auto">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={cn(
+                    "flex gap-3",
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  )}
                 >
                   {msg.role === "assistant" && (
-                    <Avatar style={{ width: 28, height: 28, flexShrink: 0, marginTop: 2 }}>
-                      <AvatarFallback
-                        className="text-xs font-bold"
-                        style={{ background: "#eef2ff", color: "#4338ca" }}
-                      >
+                    <Avatar className="w-7 h-7 shrink-0 mt-0.5">
+                      <AvatarFallback className="text-xs font-bold bg-accent text-accent-foreground">
                         AI
                       </AvatarFallback>
                     </Avatar>
                   )}
                   <div
-                    style={{
-                      maxWidth: "75%",
-                      padding: "10px 14px",
-                      fontSize: 13,
-                      lineHeight: 1.65,
-                      whiteSpace: "pre-wrap",
-                      ...(msg.role === "user"
-                        ? {
-                            background: "#4f46e5",
-                            color: "#ffffff",
-                            borderRadius: "12px 4px 12px 12px",
-                          }
-                        : {
-                            background: "#ffffff",
-                            color: "#18181b",
-                            border: "1px solid #e4e4e7",
-                            borderRadius: "4px 12px 12px 12px",
-                            boxShadow: "0 1px 3px rgba(0,0,0,.06)",
-                          }),
-                    }}
+                    className={cn(
+                      "max-w-[85%] sm:max-w-[75%] px-3.5 py-2.5 text-[13px] leading-[1.65] whitespace-pre-wrap",
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-xl rounded-br-sm"
+                        : "bg-card text-foreground border border-border rounded-xl rounded-bl-sm shadow-sm"
+                    )}
                   >
                     <MessageContent content={msg.content} workspaceSlug={workspaceSlug} />
                   </div>
@@ -360,24 +312,13 @@ export function WorkspaceAiAssistant({
               ))}
               {chatLoading && (
                 <div className="flex gap-3">
-                  <Avatar style={{ width: 28, height: 28, marginTop: 2 }}>
-                    <AvatarFallback
-                      className="text-xs font-bold"
-                      style={{ background: "#eef2ff", color: "#4338ca" }}
-                    >
+                  <Avatar className="w-7 h-7 mt-0.5">
+                    <AvatarFallback className="text-xs font-bold bg-accent text-accent-foreground">
                       AI
                     </AvatarFallback>
                   </Avatar>
-                  <div
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e4e4e7",
-                      borderRadius: "4px 12px 12px 12px",
-                      padding: "10px 14px",
-                      boxShadow: "0 1px 3px rgba(0,0,0,.06)",
-                    }}
-                  >
-                    <Loader2 style={{ width: 16, height: 16, color: "#a1a1aa" }} className="animate-spin" />
+                  <div className="bg-card border border-border rounded-xl rounded-bl-sm px-3.5 py-2.5 shadow-sm">
+                    <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
                   </div>
                 </div>
               )}
@@ -387,36 +328,23 @@ export function WorkspaceAiAssistant({
       </ScrollArea>
 
       {/* Input bar */}
-      <div
-        className="shrink-0"
-        style={{
-          borderTop: "1px solid #e4e4e7",
-          background: "#ffffff",
-          padding: "16px 40px",
-        }}
-      >
-        <div style={{ maxWidth: 680, margin: "0 auto" }}>
+      <div className="shrink-0 border-t border-border bg-card px-4 sm:px-10 py-4">
+        <div className="max-w-[680px] mx-auto">
           {/* Mentioned doc chips */}
           {mentionedDocs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {mentionedDocs.map((doc) => (
                 <span
                   key={doc.id}
-                  className="flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold"
-                  style={{
-                    fontSize: 11,
-                    background: "#eef2ff",
-                    color: "#4338ca",
-                    border: "1px solid #c7d2fe",
-                  }}
+                  className="flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold text-[11px] bg-accent text-accent-foreground border border-accent-border"
                 >
-                  <FileText style={{ width: 11, height: 11 }} />
+                  <FileText className="w-[11px] h-[11px]" />
                   {doc.title}
                   <button
                     onClick={() => removeMentionedDoc(doc.id)}
                     className="ml-0.5 hover:opacity-70"
                   >
-                    <X style={{ width: 11, height: 11 }} />
+                    <X className="w-[11px] h-[11px]" />
                   </button>
                 </span>
               ))}
@@ -425,19 +353,9 @@ export function WorkspaceAiAssistant({
 
           {/* Mention suggestion popover */}
           {(suggestions.length > 0 || suggestionLoading) && mentionQuery !== null && (
-            <div
-              className="mb-2 overflow-hidden"
-              style={{
-                border: "1px solid #e4e4e7",
-                borderRadius: 8,
-                boxShadow: "0 4px 12px rgba(0,0,0,.08)",
-                background: "#ffffff",
-              }}
-            >
+            <div className="mb-2 overflow-hidden border border-border rounded-lg shadow-md bg-card">
               {suggestionLoading ? (
-                <div style={{ padding: "8px 12px", fontSize: 12, color: "#a1a1aa" }}>
-                  Searching…
-                </div>
+                <div className="px-3 py-2 text-xs text-muted-foreground">Searching…</div>
               ) : (
                 suggestions.map((doc, i) => (
                   <button
@@ -446,17 +364,14 @@ export function WorkspaceAiAssistant({
                       e.preventDefault();
                       insertMention(doc);
                     }}
-                    className="w-full flex items-center gap-2 text-left transition-colors"
-                    style={{
-                      padding: "8px 12px",
-                      fontSize: 13,
-                      background: i === activeSuggestion ? "#eef2ff" : "transparent",
-                      color: i === activeSuggestion ? "#4338ca" : "#3f3f46",
-                      border: "none",
-                      cursor: "pointer",
-                    }}
+                    className={cn(
+                      "w-full flex items-center gap-2 text-left transition-colors px-3 py-2 text-[13px] border-none cursor-pointer",
+                      i === activeSuggestion
+                        ? "bg-accent text-accent-foreground"
+                        : "text-secondary-foreground hover:bg-muted"
+                    )}
                   >
-                    <FileText style={{ width: 13, height: 13, flexShrink: 0 }} />
+                    <FileText className="w-[13px] h-[13px] shrink-0" />
                     {doc.title}
                   </button>
                 ))
@@ -473,44 +388,15 @@ export function WorkspaceAiAssistant({
               placeholder="Ask anything… type @ to reference a document"
               disabled={chatLoading}
               rows={1}
-              style={{
-                flex: 1,
-                resize: "none",
-                border: "1.5px solid #e4e4e7",
-                borderRadius: 10,
-                padding: "9px 12px",
-                fontSize: 13,
-                background: "#fafafa",
-                color: "#18181b",
-                outline: "none",
-                minHeight: 38,
-                maxHeight: 160,
-                overflow: "auto",
-                fontFamily: "inherit",
-                transition: "border-color 150ms",
-                fieldSizing: "content",
-              } as React.CSSProperties}
-              onFocus={(e) => {
-                (e.target as HTMLTextAreaElement).style.borderColor = "#4f46e5";
-              }}
-              onBlur={(e) => {
-                (e.target as HTMLTextAreaElement).style.borderColor = "#e4e4e7";
-              }}
+              className="flex-1 resize-none border-[1.5px] border-border rounded-xl px-3 py-2 text-[13px] bg-muted text-foreground outline-none min-h-[38px] max-h-[160px] overflow-auto font-[inherit] transition-colors focus:border-primary"
+              style={{ fieldSizing: "content" } as React.CSSProperties}
             />
             <Button
               onClick={handleSubmit}
               disabled={chatLoading || !input.trim()}
-              className="text-white shrink-0"
-              style={{
-                background: "#4f46e5",
-                borderRadius: 8,
-                width: 38,
-                height: 38,
-                padding: 0,
-                boxShadow: "0 1px 2px rgba(79,70,229,.25)",
-              }}
+              className="text-primary-foreground shrink-0 bg-primary w-[38px] h-[38px] p-0 rounded-lg shadow-[0_1px_2px_rgba(79,70,229,.25)]"
             >
-              <Send style={{ width: 15, height: 15 }} />
+              <Send className="w-[15px] h-[15px]" />
             </Button>
           </div>
         </div>

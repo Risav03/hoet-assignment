@@ -8,6 +8,7 @@ import { Clock, RotateCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { clearDraft } from "@/components/editor/draft-auto-save";
+import { cn } from "@/lib/utils";
 
 interface Version {
   id: string;
@@ -49,8 +50,6 @@ export function VersionTimeline({
         toast.error(err.error ?? "Failed to restore version");
         return;
       }
-      // Drop the stale local draft so the restored content isn't
-      // immediately overwritten by an older unsaved draft.
       await clearDraft(documentId);
       onRestored?.();
       toast.success("Version restored! A new version was created.");
@@ -63,15 +62,15 @@ export function VersionTimeline({
   if (versions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <Clock style={{ width: 32, height: 32, color: "#d4d4d8", marginBottom: 8 }} />
-        <p style={{ fontSize: 13, color: "#a1a1aa" }}>No versions yet</p>
+        <Clock className="w-8 h-8 text-muted mb-2" />
+        <p className="text-[13px] text-muted-foreground">No versions yet</p>
       </div>
     );
   }
 
   return (
     <ScrollArea className="h-[560px]">
-      <div style={{ paddingRight: 4 }}>
+      <div className="pr-1">
         {versions.map((version, idx) => {
           const isCurrent = version.id === currentVersionId;
           const isLast = idx === versions.length - 1;
@@ -79,84 +78,51 @@ export function VersionTimeline({
           return (
             <div
               key={version.id}
-              className="flex gap-3 cursor-pointer"
+              className="group flex gap-3 cursor-pointer"
               onClick={() => onPreview?.(version)}
-              onMouseEnter={(e) => {
-                const row = (e.currentTarget as HTMLDivElement).querySelector<HTMLDivElement>(".vt-row-content");
-                if (row && !isCurrent) row.style.background = "#f4f4f5";
-              }}
-              onMouseLeave={(e) => {
-                const row = (e.currentTarget as HTMLDivElement).querySelector<HTMLDivElement>(".vt-row-content");
-                if (row && !isCurrent) row.style.background = "transparent";
-              }}
             >
               {/* Left column: dot + connector line */}
-              <div className="flex flex-col items-center" style={{ width: 20, flexShrink: 0 }}>
-                {/* Dot */}
+              <div className="flex flex-col items-center w-5 shrink-0">
                 <div
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    marginTop: 14,
-                    flexShrink: 0,
-                    background: isCurrent ? "#4f46e5" : "#d4d4d8",
-                    border: `2px solid ${isCurrent ? "#c7d2fe" : "#e4e4e7"}`,
-                    boxShadow: isCurrent ? "0 0 0 3px rgba(79,70,229,.12)" : "none",
-                  }}
+                  className={cn(
+                    "w-2.5 h-2.5 rounded-full mt-[14px] shrink-0",
+                    isCurrent
+                      ? "bg-primary border-2 border-accent-border ring-[3px] ring-primary/10"
+                      : "bg-muted-foreground/40 border-2 border-border"
+                  )}
                 />
-                {/* Connector line */}
                 {!isLast && (
-                  <div
-                    style={{
-                      width: 1,
-                      flex: 1,
-                      background: "#e4e4e7",
-                      marginTop: 4,
-                      marginBottom: 0,
-                      minHeight: 16,
-                    }}
-                  />
+                  <div className="w-px flex-1 bg-border mt-1 mb-0 min-h-4" />
                 )}
               </div>
 
               {/* Right column: content */}
               <div
-                className="vt-row-content flex-1 flex items-start justify-between gap-2 rounded-lg transition-colors"
-                style={{
-                  padding: "8px 10px",
-                  marginBottom: isLast ? 0 : 2,
-                  background: isCurrent ? "#eef2ff" : "transparent",
-                  border: isCurrent ? "1px solid #c7d2fe" : "1px solid transparent",
-                  borderRadius: 8,
-                }}
+                className={cn(
+                  "flex-1 flex items-start justify-between gap-2 rounded-lg transition-colors px-2.5 py-2",
+                  isCurrent
+                    ? "bg-accent border border-accent-border"
+                    : "border border-transparent group-hover:bg-muted",
+                  isLast ? "mb-0" : "mb-0.5"
+                )}
               >
                 <div className="flex-1 min-w-0">
                   {/* Version number + badge */}
                   <div className="flex items-center gap-2 mb-1">
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#18181b" }}>
+                    <span className="text-[13px] font-semibold text-foreground">
                       v{version.versionNumber}
                     </span>
                     {isCurrent && (
-                      <span
-                        className="rounded-full px-2 py-0.5 font-semibold"
-                        style={{ fontSize: 10, background: "#4f46e5", color: "#ffffff" }}
-                      >
+                      <span className="rounded-full px-2 py-0.5 font-semibold text-[10px] bg-primary text-primary-foreground">
                         Current
                       </span>
                     )}
                   </div>
 
                   {/* Author + time */}
-                  <div
-                    className="flex items-center gap-1.5"
-                    style={{ fontSize: 11, color: "#71717a" }}
-                  >
-                    <Avatar style={{ width: 14, height: 14 }}>
-                      <AvatarFallback
-                        className="text-[8px] font-bold"
-                        style={{ background: "#eef2ff", color: "#4338ca" }}
-                      >
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Avatar className="w-3.5 h-3.5">
+                      <AvatarFallback className="text-[8px] font-bold bg-accent text-accent-foreground">
                         {version.createdBy.name?.[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -173,7 +139,7 @@ export function VersionTimeline({
                   <Button
                     size="sm"
                     variant="ghost"
-                    style={{ height: 26, padding: "0 8px", fontSize: 11, color: "#71717a", flexShrink: 0 }}
+                    className="h-[26px] px-2 text-[11px] text-muted-foreground shrink-0"
                     disabled={restoringId === version.id}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -181,9 +147,9 @@ export function VersionTimeline({
                     }}
                   >
                     {restoringId === version.id ? (
-                      <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <RotateCcw style={{ width: 12, height: 12 }} />
+                      <RotateCcw className="w-3 h-3" />
                     )}
                   </Button>
                 )}

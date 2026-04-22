@@ -91,7 +91,7 @@ export function RichTextEditor({
   const activeColor = editor.getAttributes("textStyle").color as string | undefined;
 
   return (
-    <div className={cn("flex flex-col border rounded-lg overflow-hidden bg-white dark:bg-slate-950 min-h-screen", className)}>
+    <div className={cn("flex flex-col border rounded-lg overflow-hidden bg-card min-h-screen", className)}>
       {editable && (
         <div className="flex items-center gap-0.5 px-3 py-2 border-b bg-slate-50 dark:bg-slate-900 flex-wrap">
           <ToolbarButton

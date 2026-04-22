@@ -6,17 +6,16 @@ import { Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { InviteMemberDialog } from "@/components/workspace/invite-member-dialog";
 import { MemberActions } from "@/components/workspace/member-actions";
+import { cn } from "@/lib/utils";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-function getRoleBadgeStyle(role: string) {
-  if (role === "OWNER")
-    return { background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe" };
-  if (role === "EDITOR")
-    return { background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7" };
-  return { background: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" };
+function getRoleBadgeClass(role: string) {
+  if (role === "OWNER") return "bg-accent text-accent-foreground border border-accent-border";
+  if (role === "EDITOR") return "bg-success-soft text-success-strong border border-success-border";
+  return "bg-muted text-secondary-foreground border border-border";
 }
 
 export default async function MembersPage({ params }: PageProps) {
@@ -34,21 +33,16 @@ export default async function MembersPage({ params }: PageProps) {
   const isOwner = currentMember.role === "OWNER";
 
   return (
-    <div className="page-animate" style={{ padding: "36px 40px" }}>
+    <div className="page-animate p-5 md:p-9 md:px-10">
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div
-            className="flex items-center justify-center"
-            style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
-          >
-            <Users style={{ width: 17, height: 17, color: "#4f46e5" }} />
+          <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-accent">
+            <Users className="w-[17px] h-[17px] text-primary" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 2 }}>
-              Members
-            </h1>
-            <p style={{ fontSize: 13, color: "#71717a" }}>
+            <h1 className="text-[22px] font-extrabold text-foreground mb-0.5">Members</h1>
+            <p className="text-[13px] text-muted-foreground">
               {members.length} member{members.length !== 1 ? "s" : ""} · {workspace.name}
             </p>
           </div>
@@ -57,49 +51,32 @@ export default async function MembersPage({ params }: PageProps) {
       </div>
 
       {/* Members list card */}
-      <div
-        className="stagger"
-        style={{
-          background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 12,
-          boxShadow: "0 1px 3px rgba(0,0,0,.04)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="stagger bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         {members.map((m: typeof members[0], idx: number) => (
           <div
             key={m.id}
-            className="flex items-center gap-4"
-            style={{
-              padding: "14px 20px",
-              borderBottom:
-                idx < members.length - 1 ? "1px solid #f4f4f5" : "none",
-            }}
+            className={cn(
+              "flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-4 sm:p-[14px] sm:px-5",
+              idx < members.length - 1 ? "border-b border-muted" : ""
+            )}
           >
-            <Avatar style={{ width: 36, height: 36 }}>
-              <AvatarFallback
-                className="font-bold text-sm"
-                style={{ background: "#eef2ff", color: "#4338ca" }}
-              >
+            <Avatar className="w-9 h-9">
+              <AvatarFallback className="font-bold text-sm bg-accent text-accent-foreground">
                 {m.user.name?.[0]?.toUpperCase() ?? "U"}
               </AvatarFallback>
             </Avatar>
 
             <div className="flex-1 min-w-0">
-              <p style={{ fontSize: 14, fontWeight: 600, color: "#18181b" }}>{m.user.name}</p>
-              <p style={{ fontSize: 12, color: "#71717a" }}>{m.user.email}</p>
+              <p className="text-sm font-semibold text-foreground">{m.user.name}</p>
+              <p className="text-xs text-muted-foreground">{m.user.email}</p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span style={{ fontSize: 12, color: "#a1a1aa" }}>
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              <span className="hidden md:inline text-xs text-muted-foreground">
                 Joined {formatDistanceToNow(new Date(m.createdAt), { addSuffix: true })}
               </span>
 
-              <span
-                className="rounded-full px-2.5 py-0.5 font-semibold text-xs"
-                style={getRoleBadgeStyle(m.role)}
-              >
+              <span className={cn("rounded-full px-2.5 py-0.5 font-semibold text-xs", getRoleBadgeClass(m.role))}>
                 {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
               </span>
 

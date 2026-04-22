@@ -4,6 +4,7 @@ import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { getWorkspaceProposals } from "@/lib/dal/proposal";
 import { ProposalCard } from "@/components/proposals/proposal-card";
 import { GitPullRequest } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -32,56 +33,45 @@ export default async function ProposalsPage({ params, searchParams }: PageProps)
   const activeTab = (TABS.find((t) => t === status) ?? "PENDING") as typeof TABS[number];
 
   return (
-    <div className="page-animate" style={{ padding: "36px 40px" }}>
+    <div className="page-animate p-5 md:p-9 md:px-10">
       {/* Page header */}
       <div className="flex items-center gap-3 mb-6">
-        <div
-          className="flex items-center justify-center"
-          style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
-        >
-          <GitPullRequest style={{ width: 17, height: 17, color: "#4f46e5" }} />
+        <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-accent">
+          <GitPullRequest className="w-[17px] h-[17px] text-primary" />
         </div>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 2 }}>
-            Proposals
-          </h1>
-          <p style={{ fontSize: 13, color: "#71717a" }}>{workspace.name}</p>
+          <h1 className="text-[22px] font-extrabold text-foreground mb-0.5">Proposals</h1>
+          <p className="text-[13px] text-muted-foreground">{workspace.name}</p>
         </div>
       </div>
 
-      {/* Segmented status tabs */}
-      <div className="flex items-center mb-6">
-        <div
-          className="flex items-center p-1 gap-1"
-          style={{ background: "#f4f4f5", borderRadius: 8 }}
-        >
-          {TABS.map((tab) => (
-            <a key={tab} href={`?status=${tab}`}>
-              <span
-                className="block cursor-pointer transition-all font-semibold"
-                style={{
-                  padding: "4px 14px",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  background: activeTab === tab ? "#ffffff" : "transparent",
-                  color: activeTab === tab ? "#18181b" : "#71717a",
-                  boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,.08)" : "none",
-                }}
-              >
-                {tab.charAt(0) + tab.slice(1).toLowerCase()}
-              </span>
-            </a>
-          ))}
+      {/* Segmented status tabs — horizontally scrollable on mobile */}
+      <div className="overflow-x-auto -mx-5 px-5 md:-mx-0 md:px-0 mb-6">
+        <div className="flex items-center w-max">
+          <div className="flex items-center p-1 gap-1 bg-muted rounded-lg">
+            {TABS.map((tab) => (
+              <a key={tab} href={`?status=${tab}`}>
+                <span
+                  className={cn(
+                    "block cursor-pointer transition-all font-semibold text-xs px-3.5 py-1 rounded-md whitespace-nowrap",
+                    activeTab === tab
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {tab.charAt(0) + tab.slice(1).toLowerCase()}
+                </span>
+              </a>
+            ))}
+          </div>
         </div>
       </div>
 
       {proposals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
-          <GitPullRequest style={{ width: 40, height: 40, color: "#d4d4d8", marginBottom: 12 }} />
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#3f3f46", marginBottom: 6 }}>
-            No proposals
-          </h3>
-          <p style={{ fontSize: 13, color: "#a1a1aa" }}>
+          <GitPullRequest className="w-10 h-10 text-muted mb-3" />
+          <h3 className="text-sm font-semibold text-secondary-foreground mb-1.5">No proposals</h3>
+          <p className="text-[13px] text-muted-foreground text-center max-w-xs">
             {activeTab === "PENDING"
               ? "No pending proposals. Editors can propose changes from the document editor."
               : `No ${activeTab.toLowerCase()} proposals yet.`}

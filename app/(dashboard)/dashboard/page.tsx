@@ -5,13 +5,12 @@ import Link from "next/link";
 import { Users, FileText, Clock, Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { CreateWorkspaceDialog } from "@/components/workspace/create-workspace-dialog";
+import { cn } from "@/lib/utils";
 
-function getRoleBadgeStyle(role: string) {
-  if (role === "OWNER")
-    return { background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe" };
-  if (role === "EDITOR")
-    return { background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7" };
-  return { background: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" };
+function getRoleBadgeClass(role: string) {
+  if (role === "OWNER") return "bg-accent text-accent-foreground border border-accent-border";
+  if (role === "EDITOR") return "bg-success-soft text-success-strong border border-success-border";
+  return "bg-muted text-secondary-foreground border border-border";
 }
 
 export default async function DashboardPage() {
@@ -22,14 +21,14 @@ export default async function DashboardPage() {
   const firstName = session.user.name?.split(" ")[0];
 
   return (
-    <div className="page-animate" style={{ padding: "36px 40px" }}>
+    <div className="page-animate p-5 md:p-9 md:px-10">
       {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 4 }}>
+          <h1 className="text-[22px] font-extrabold text-foreground mb-1">
             Welcome back, {firstName}
           </h1>
-          <p style={{ fontSize: 13, color: "#71717a" }}>
+          <p className="text-[13px] text-muted-foreground">
             {memberships.length} workspace{memberships.length !== 1 ? "s" : ""}
           </p>
         </div>
@@ -38,78 +37,46 @@ export default async function DashboardPage() {
 
       {memberships.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24">
-          <div
-            className="flex items-center justify-center mb-6"
-            style={{ width: 56, height: 56, borderRadius: 16, background: "#eef2ff" }}
-          >
-            <Plus style={{ width: 24, height: 24, color: "#4f46e5" }} />
+          <div className="flex items-center justify-center mb-6 w-14 h-14 rounded-2xl bg-accent">
+            <Plus className="w-6 h-6 text-primary" />
           </div>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b", marginBottom: 8 }}>
-            No workspaces yet
-          </h2>
-          <p style={{ fontSize: 13, color: "#71717a", marginBottom: 20 }}>
+          <h2 className="text-base font-bold text-foreground mb-2">No workspaces yet</h2>
+          <p className="text-[13px] text-muted-foreground mb-5">
             Create your first workspace to start collaborating with your team.
           </p>
           <CreateWorkspaceDialog />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 stagger" style={{ gap: 14 }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 stagger gap-3.5">
           {memberships.map((m: typeof memberships[0]) => (
             <Link key={m.workspace.id} href={`/workspaces/${m.workspace.slug}`}>
-              <div
-                className="hover-card cursor-pointer"
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #e4e4e7",
-                  borderRadius: 12,
-                  padding: "20px 20px 16px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,.04)",
-                }}
-              >
+              <div className="hover-card cursor-pointer bg-card border border-border rounded-xl p-5 pb-4 shadow-sm">
                 {/* Top row */}
                 <div className="flex items-start justify-between mb-3">
-                  <div
-                    className="flex items-center justify-center font-extrabold"
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 10,
-                      background: "#eef2ff",
-                      color: "#4f46e5",
-                      fontSize: 16,
-                      flexShrink: 0,
-                    }}
-                  >
+                  <div className="flex items-center justify-center font-extrabold w-[38px] h-[38px] rounded-[10px] bg-accent text-primary text-base shrink-0">
                     {m.workspace.name[0]?.toUpperCase()}
                   </div>
-                  <span
-                    className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
-                    style={getRoleBadgeStyle(m.role)}
-                  >
+                  <span className={cn("text-xs font-semibold px-2.5 py-0.5 rounded-full", getRoleBadgeClass(m.role))}>
                     {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
                   </span>
                 </div>
 
                 {/* Name + slug */}
-                <p style={{ fontSize: 14, fontWeight: 700, color: "#18181b", marginBottom: 2 }}>
-                  {m.workspace.name}
-                </p>
-                <p style={{ fontSize: 11, color: "#a1a1aa", marginBottom: 14 }}>
-                  /{m.workspace.slug}
-                </p>
+                <p className="text-sm font-bold text-foreground mb-0.5">{m.workspace.name}</p>
+                <p className="text-[11px] text-muted-foreground mb-3.5">/{m.workspace.slug}</p>
 
                 {/* Footer row */}
-                <div className="flex items-center gap-4" style={{ fontSize: 12, color: "#71717a" }}>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <Users style={{ width: 12, height: 12 }} />
+                    <Users className="w-3 h-3" />
                     {m.workspace._count.members}
                   </span>
                   <span className="flex items-center gap-1">
-                    <FileText style={{ width: 12, height: 12 }} />
+                    <FileText className="w-3 h-3" />
                     {m.workspace._count.documents}
                   </span>
                   <span className="flex items-center gap-1 ml-auto">
-                    <Clock style={{ width: 12, height: 12 }} />
+                    <Clock className="w-3 h-3" />
                     {formatDistanceToNow(m.workspace.updatedAt, { addSuffix: true })}
                   </span>
                 </div>
@@ -117,25 +84,14 @@ export default async function DashboardPage() {
             </Link>
           ))}
 
-          {/* Dashed new workspace tile — uses a div trigger to avoid button-in-button */}
+          {/* Dashed new workspace tile */}
           <CreateWorkspaceDialog
             trigger={
-              <div
-                className="new-ws-tile flex flex-col items-center justify-center cursor-pointer"
-                style={{
-                  border: "1.5px dashed #e4e4e7",
-                  borderRadius: 12,
-                  minHeight: 140,
-                  background: "#fafafa",
-                }}
-              >
-                <div
-                  className="flex items-center justify-center mb-2"
-                  style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
-                >
-                  <Plus style={{ width: 18, height: 18, color: "#4f46e5" }} />
+              <div className="new-ws-tile flex flex-col items-center justify-center cursor-pointer border-[1.5px] border-dashed border-border rounded-xl min-h-[140px] bg-secondary/60">
+                <div className="flex items-center justify-center mb-2 w-9 h-9 rounded-[10px] bg-accent">
+                  <Plus className="w-[18px] h-[18px] text-primary" />
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#71717a" }}>
+                <span className="text-[13px] font-semibold text-muted-foreground">
                   New workspace
                 </span>
               </div>

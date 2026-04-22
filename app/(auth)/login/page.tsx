@@ -44,48 +44,21 @@ function LoginForm() {
   }
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-4"
-      style={{ background: "#fafafa" }}
-    >
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-secondary">
       {/* Logo block */}
       <div className="flex flex-col items-center mb-8">
-        <div
-          className="flex items-center justify-center font-extrabold text-white mb-4"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            background: "#4f46e5",
-            fontSize: 18,
-          }}
-        >
+        <div className="flex items-center justify-center font-extrabold text-primary-foreground mb-4 w-10 h-10 rounded-xl bg-primary text-lg">
           C
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 4 }}>
-          Welcome back
-        </h1>
-        <p style={{ fontSize: 13, color: "#71717a" }}>Sign in to your CoWork account</p>
+        <h1 className="text-[22px] font-extrabold text-foreground mb-1">Welcome back</h1>
+        <p className="text-[13px] text-muted-foreground">Sign in to your CoWork account</p>
       </div>
 
       {/* Form card */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 380,
-          background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 12,
-          padding: 28,
-          boxShadow: "0 1px 3px rgba(0,0,0,.04)",
-        }}
-      >
+      <div className="w-full max-w-sm bg-card border border-border rounded-xl p-6 sm:p-7 shadow-sm">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <div className="space-y-1.5">
-            <Label
-              htmlFor="email"
-              style={{ fontSize: 12, fontWeight: 600, color: "#3f3f46" }}
-            >
+            <Label htmlFor="email" className="text-xs font-semibold text-secondary-foreground">
               Email
             </Label>
             <Input
@@ -94,24 +67,14 @@ function LoginForm() {
               placeholder="you@example.com"
               autoComplete="email"
               {...register("email")}
-              style={{
-                border: "1.5px solid #e4e4e7",
-                borderRadius: 8,
-                padding: "9px 12px",
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-              className="focus-visible:border-indigo-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
+              className="focus-visible:border-primary focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
             />
             {errors.email && (
               <p className="text-sm text-destructive">{errors.email.message}</p>
             )}
           </div>
           <div className="space-y-1.5">
-            <Label
-              htmlFor="password"
-              style={{ fontSize: 12, fontWeight: 600, color: "#3f3f46" }}
-            >
+            <Label htmlFor="password" className="text-xs font-semibold text-secondary-foreground">
               Password
             </Label>
             <Input
@@ -120,14 +83,7 @@ function LoginForm() {
               placeholder="••••••••"
               autoComplete="current-password"
               {...register("password")}
-              style={{
-                border: "1.5px solid #e4e4e7",
-                borderRadius: 8,
-                padding: "9px 12px",
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-              className="focus-visible:border-indigo-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
+              className="focus-visible:border-primary focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
             />
             {errors.password && (
               <p className="text-sm text-destructive">{errors.password.message}</p>
@@ -135,30 +91,16 @@ function LoginForm() {
           </div>
           <Button
             type="submit"
-            className="w-full font-semibold text-white"
+            className="w-full font-semibold text-primary-foreground bg-primary mt-5 h-[38px] shadow-[0_1px_2px_rgba(79,70,229,.25)]"
             disabled={loading}
-            style={{
-              background: "#4f46e5",
-              borderRadius: 8,
-              marginTop: 20,
-              height: 38,
-              boxShadow: "0 1px 2px rgba(79,70,229,.25)",
-            }}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Sign in
           </Button>
         </form>
-        <p
-          className="text-center mt-5"
-          style={{ fontSize: 12, color: "#71717a" }}
-        >
+        <p className="text-center mt-5 text-xs text-muted-foreground">
           Don&apos;t have an account?{" "}
-          <Link
-            href="/signup"
-            className="font-semibold hover:underline"
-            style={{ color: "#4f46e5" }}
-          >
+          <Link href="/signup" className="font-semibold hover:underline text-primary">
             Sign up
           </Link>
         </p>

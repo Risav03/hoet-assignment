@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Plus,
   Building2,
+  Menu,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -27,6 +28,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useState } from "react";
 
 interface Workspace {
   id: string;
@@ -39,7 +46,11 @@ interface SidebarProps {
   workspaces: Workspace[];
 }
 
-export function Sidebar({ user, workspaces }: SidebarProps) {
+function NavContent({
+  user,
+  workspaces,
+  onNavClick,
+}: SidebarProps & { onNavClick?: () => void }) {
   const pathname = usePathname();
   const workspaceSlugMatch = pathname.match(/^\/workspaces\/([^/]+)/);
   const workspaceSlug = workspaceSlugMatch?.[1];
@@ -67,31 +78,13 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
   }
 
   return (
-    <aside
-      className="flex flex-col h-screen shrink-0"
-      style={{
-        width: 220,
-        background: "#18181b",
-        borderRight: "1px solid #27272a",
-      }}
-    >
+    <div className="flex flex-col h-full">
       {/* Logo strip */}
-      <div
-        className="flex items-center gap-2 px-4"
-        style={{ height: 56, borderBottom: "1px solid #27272a" }}
-      >
-        <div
-          className="flex items-center justify-center font-extrabold text-white text-xs shrink-0"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "#4f46e5",
-          }}
-        >
+      <div className="flex items-center gap-2 px-4 h-14 border-b border-sidebar-border shrink-0">
+        <div className="flex items-center justify-center font-extrabold text-primary-foreground text-xs shrink-0 w-7 h-7 rounded-lg bg-primary">
           C
         </div>
-        <span className="font-bold text-white" style={{ fontSize: 14 }}>
+        <span className="font-bold text-sidebar-accent-foreground text-sm">
           CoWork
         </span>
         <div className="ml-auto flex items-center gap-1.5">
@@ -101,27 +94,14 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
       </div>
 
       {/* Workspace switcher */}
-      <div className="px-3 py-2.5" style={{ borderBottom: "1px solid #27272a" }}>
+      <div className="px-3 py-2.5 border-b border-sidebar-border">
         <DropdownMenu>
-          <DropdownMenuTrigger
-            className="w-full flex items-center gap-2 px-2 h-8 rounded-lg transition-colors"
-            style={{
-              background: "#27272a",
-              border: "1px solid #27272a",
-              borderRadius: 8,
-              color: "#d4d4d8",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            <Building2
-              className="shrink-0"
-              style={{ width: 14, height: 14, color: "#71717a" }}
-            />
+          <DropdownMenuTrigger className="w-full flex items-center gap-2 px-2 h-8 rounded-lg transition-colors bg-sidebar-accent border border-sidebar-border text-sidebar-accent-foreground text-xs font-semibold">
+            <Building2 className="shrink-0 w-3.5 h-3.5 text-sidebar-foreground" />
             <span className="truncate flex-1 text-left">
               {currentWorkspace?.name ?? "Select workspace"}
             </span>
-            <ChevronDown style={{ width: 12, height: 12 }} />
+            <ChevronDown className="w-3 h-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-52">
             {workspaces.map((ws) => (
@@ -151,33 +131,21 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
       <ScrollArea className="flex-1 py-2">
         <nav className="px-2 space-y-0.5">
           {globalNav.map((item) => (
-            <Link key={item.href} href={item.href}>
+            <Link key={item.href} href={item.href} onClick={onNavClick}>
               <span
                 className={cn(
-                  "flex items-center gap-2.5 cursor-pointer transition-all",
+                  "flex items-center gap-2.5 cursor-pointer transition-all text-[13px] font-medium rounded-lg border-l-[2.5px]",
+                  "py-[7px] px-[10px]",
                   isActive(item.href)
-                    ? "text-white"
-                    : "hover:text-[#d4d4d8]"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-sidebar-primary"
+                    : "text-sidebar-foreground hover:text-sidebar-accent-foreground border-l-transparent"
                 )}
-                style={{
-                  padding: "7px 10px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 500,
-                  background: isActive(item.href) ? "#27272a" : "transparent",
-                  color: isActive(item.href) ? "#ffffff" : "#a1a1aa",
-                  borderLeft: isActive(item.href)
-                    ? "2.5px solid #4f46e5"
-                    : "2.5px solid transparent",
-                }}
               >
                 <item.icon
-                  className="shrink-0"
-                  style={{
-                    width: 15,
-                    height: 15,
-                    color: isActive(item.href) ? "#4f46e5" : "currentColor",
-                  }}
+                  className={cn(
+                    "shrink-0 w-[15px] h-[15px]",
+                    isActive(item.href) ? "text-sidebar-primary" : "text-current"
+                  )}
                 />
                 {item.label}
               </span>
@@ -186,45 +154,27 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
 
           {workspaceNav.length > 0 && (
             <>
-              <div style={{ padding: "10px 10px 4px" }}>
-                <p
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                    color: "#71717a",
-                  }}
-                >
+              <div className="px-[10px] pt-[10px] pb-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sidebar-foreground">
                   Workspace
                 </p>
               </div>
               {workspaceNav.map((item) => (
-                <Link key={item.href} href={item.href}>
+                <Link key={item.href} href={item.href} onClick={onNavClick}>
                   <span
                     className={cn(
-                      "flex items-center gap-2.5 cursor-pointer transition-all",
-                      isActive(item.href) ? "text-white" : "hover:text-[#d4d4d8]"
+                      "flex items-center gap-2.5 cursor-pointer transition-all text-[13px] font-medium rounded-lg border-l-[2.5px]",
+                      "py-[7px] px-[10px]",
+                      isActive(item.href)
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-sidebar-primary"
+                        : "text-sidebar-foreground hover:text-sidebar-accent-foreground border-l-transparent"
                     )}
-                    style={{
-                      padding: "7px 10px",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: 500,
-                      background: isActive(item.href) ? "#27272a" : "transparent",
-                      color: isActive(item.href) ? "#ffffff" : "#a1a1aa",
-                      borderLeft: isActive(item.href)
-                        ? "2.5px solid #4f46e5"
-                        : "2.5px solid transparent",
-                    }}
                   >
                     <item.icon
-                      className="shrink-0"
-                      style={{
-                        width: 15,
-                        height: 15,
-                        color: isActive(item.href) ? "#4f46e5" : "currentColor",
-                      }}
+                      className={cn(
+                        "shrink-0 w-[15px] h-[15px]",
+                        isActive(item.href) ? "text-sidebar-primary" : "text-current"
+                      )}
                     />
                     {item.label}
                   </span>
@@ -236,32 +186,23 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
       </ScrollArea>
 
       {/* User footer */}
-      <div style={{ borderTop: "1px solid #27272a", padding: "10px 12px" }}>
+      <div className="border-t border-sidebar-border p-3">
         <DropdownMenu>
-          <DropdownMenuTrigger className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors hover:bg-[#27272a]">
-            <Avatar style={{ width: 28, height: 28 }}>
-              <AvatarFallback
-                className="font-bold text-white text-xs"
-                style={{ background: "#4f46e5" }}
-              >
+          <DropdownMenuTrigger className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors hover:bg-sidebar-accent">
+            <Avatar className="w-7 h-7">
+              <AvatarFallback className="font-bold text-primary-foreground text-xs bg-primary">
                 {user.name?.[0]?.toUpperCase() ?? "U"}
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col text-left min-w-0 flex-1">
-              <span
-                className="truncate font-semibold"
-                style={{ fontSize: 12, color: "#d4d4d8" }}
-              >
+              <span className="truncate font-semibold text-xs text-sidebar-accent-foreground">
                 {user.name}
               </span>
-              <span
-                className="truncate"
-                style={{ fontSize: 11, color: "#71717a" }}
-              >
+              <span className="truncate text-[11px] text-sidebar-foreground">
                 {user.email}
               </span>
             </div>
-            <ChevronDown style={{ width: 12, height: 12, color: "#71717a" }} />
+            <ChevronDown className="w-3 h-3 text-sidebar-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem
@@ -282,6 +223,73 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+    </div>
+  );
+}
+
+export function Sidebar({ user, workspaces }: SidebarProps) {
+  return (
+    <aside className="hidden md:flex flex-col h-screen w-[220px] shrink-0 bg-sidebar border-r border-sidebar-border">
+      <NavContent user={user} workspaces={workspaces} />
     </aside>
+  );
+}
+
+export function MobileHeader({ user, workspaces }: SidebarProps) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  const workspaceSlugMatch = pathname.match(/^\/workspaces\/([^/]+)/);
+  const workspaceSlug = workspaceSlugMatch?.[1];
+  const currentWorkspace = workspaces.find((w) => w.slug === workspaceSlug);
+
+  return (
+    <header className="md:hidden sticky top-0 z-40 h-14 border-b border-sidebar-border bg-sidebar text-sidebar-foreground flex items-center px-4 gap-3 shrink-0">
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger className="flex items-center justify-center w-7 h-7 rounded-md text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+          <Menu className="w-5 h-5" />
+          <span className="sr-only">Open menu</span>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-[260px] p-0 bg-sidebar border-sidebar-border" showCloseButton={false}>
+          <NavContent user={user} workspaces={workspaces} onNavClick={() => setOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center font-extrabold text-primary-foreground text-xs w-6 h-6 rounded-md bg-primary">
+          C
+        </div>
+        <span className="font-bold text-sidebar-accent-foreground text-sm">
+          {currentWorkspace?.name ?? "CoWork"}
+        </span>
+      </div>
+
+      <div className="ml-auto flex items-center gap-2">
+        <OnlineIndicator />
+        <SyncStatusIndicator />
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center rounded-full">
+            <Avatar className="w-7 h-7">
+              <AvatarFallback className="font-bold text-primary-foreground text-xs bg-primary">
+                {user.name?.[0]?.toUpperCase() ?? "U"}
+              </AvatarFallback>
+            </Avatar>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={() => { window.location.href = "/settings"; }}>
+              Account Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
   );
 }

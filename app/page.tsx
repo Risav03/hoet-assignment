@@ -42,49 +42,23 @@ export default async function LandingPage() {
   ];
 
   return (
-    <div
-      className="flex flex-col min-h-screen"
-      style={{ background: "#09090b", color: "#ffffff" }}
-    >
+    <div className="flex flex-col min-h-screen bg-sidebar text-white">
       {/* Header */}
-      <header
-        className="sticky top-0 z-50 flex items-center justify-between px-8"
-        style={{
-          height: 60,
-          background: "#09090b",
-          borderBottom: "1px solid #27272a",
-        }}
-      >
+      <header className="sticky top-0 z-50 flex items-center justify-between px-4 sm:px-8 h-[60px] bg-sidebar border-b border-sidebar-border">
         <div className="flex items-center gap-2.5">
-          <div
-            className="flex items-center justify-center font-extrabold text-white text-sm"
-            style={{ width: 28, height: 28, borderRadius: 8, background: "#4f46e5" }}
-          >
+          <div className="flex items-center justify-center font-extrabold text-primary-foreground text-sm w-7 h-7 rounded-lg bg-primary">
             C
           </div>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "#ffffff" }}>
-            CoWork
-          </span>
+          <span className="text-[15px] font-bold text-white">CoWork</span>
         </div>
-        <nav className="flex items-center gap-3">
+        <nav className="flex items-center gap-2 sm:gap-3">
           <Link href="/login">
-            <Button
-              variant="ghost"
-              className="text-sm font-medium"
-              style={{ color: "#a1a1aa" }}
-            >
+            <Button variant="ghost" className="text-sm font-medium text-sidebar-foreground">
               Sign in
             </Button>
           </Link>
           <Link href="/signup">
-            <Button
-              className="text-sm font-semibold text-white"
-              style={{
-                background: "#4f46e5",
-                borderRadius: 8,
-                boxShadow: "0 1px 2px rgba(79,70,229,.25)",
-              }}
-            >
+            <Button className="text-sm font-semibold text-primary-foreground bg-primary rounded-lg shadow-[0_1px_2px_rgba(79,70,229,.25)]">
               Get started
             </Button>
           </Link>
@@ -93,49 +67,19 @@ export default async function LandingPage() {
 
       {/* Hero */}
       <main className="flex-1 flex flex-col items-center">
-        <section
-          className="flex flex-col items-center text-center w-full"
-          style={{ maxWidth: 760, margin: "0 auto", padding: "96px 24px 80px" }}
-        >
+        <section className="flex flex-col items-center text-center w-full max-w-[760px] mx-auto px-6 pt-16 pb-16 sm:pt-24 sm:pb-20">
           {/* Pill badge */}
-          <div
-            className="inline-flex items-center gap-1.5 mb-8 text-sm font-medium"
-            style={{
-              background: "#1e1b4b",
-              color: "#818cf8",
-              border: "1px solid #312e81",
-              borderRadius: 99,
-              padding: "5px 14px",
-              fontSize: 13,
-            }}
-          >
+          <div className="inline-flex items-center gap-1.5 mb-8 text-[13px] font-medium rounded-full px-[14px] py-[5px] bg-[#1e1b4b] text-[#818cf8] border border-[#312e81]">
             ⚡ Local-first · Offline-capable · Real-time
           </div>
 
-          <h1
-            className="mb-6"
-            style={{
-              fontSize: 60,
-              fontWeight: 800,
-              lineHeight: 1.1,
-              letterSpacing: "-2px",
-              color: "#ffffff",
-            }}
-          >
+          <h1 className="mb-6 text-4xl sm:text-5xl lg:text-[60px] font-extrabold leading-tight tracking-[-2px] text-white">
             Collaborate without
             <br />
-            <span style={{ color: "#4f46e5" }}>compromising</span>
+            <span className="text-primary">compromising</span>
           </h1>
 
-          <p
-            className="mb-10"
-            style={{
-              fontSize: 17,
-              lineHeight: 1.7,
-              color: "#71717a",
-              maxWidth: 520,
-            }}
-          >
+          <p className="mb-10 text-base sm:text-[17px] leading-[1.7] text-muted-foreground max-w-[520px]">
             CoWork is a team workspace platform that lets you edit offline,
             propose changes, vote on updates, and sync safely across devices —
             powered by proposal-based conflict resolution.
@@ -143,30 +87,12 @@ export default async function LandingPage() {
 
           <div className="flex items-center gap-4 flex-wrap justify-center">
             <Link href="/signup">
-              <Button
-                size="lg"
-                className="font-semibold text-white px-8"
-                style={{
-                  background: "#4f46e5",
-                  borderRadius: 8,
-                  boxShadow: "0 1px 2px rgba(79,70,229,.25)",
-                }}
-              >
+              <Button size="lg" className="font-semibold text-primary-foreground px-8 bg-primary rounded-lg shadow-[0_1px_2px_rgba(79,70,229,.25)]">
                 Start for free →
               </Button>
             </Link>
             <Link href="/login">
-              <Button
-                size="lg"
-                variant="outline"
-                className="px-8 font-semibold"
-                style={{
-                  borderColor: "#27272a",
-                  color: "#a1a1aa",
-                  background: "transparent",
-                  borderRadius: 8,
-                }}
-              >
+              <Button size="lg" variant="outline" className="px-8 font-semibold border-sidebar-border text-sidebar-foreground bg-transparent rounded-lg">
                 Sign in
               </Button>
             </Link>
@@ -174,39 +100,20 @@ export default async function LandingPage() {
         </section>
 
         {/* Feature grid */}
-        <section
-          className="w-full px-6 pb-24"
-          style={{ maxWidth: 960, margin: "0 auto" }}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <section className="w-full px-4 sm:px-6 pb-16 sm:pb-24 max-w-[960px] mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {features.map((f) => (
               <div
                 key={f.title}
-                style={{
-                  background: "#18181b",
-                  border: "1px solid #27272a",
-                  borderRadius: 14,
-                  padding: 24,
-                }}
+                className="bg-sidebar-accent border border-sidebar-border rounded-[14px] p-6"
               >
-                <div
-                  className="flex items-center justify-center mb-4"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: "#1e1b4b",
-                  }}
-                >
-                  <f.icon style={{ width: 17, height: 17, color: "#818cf8" }} />
+                <div className="flex items-center justify-center mb-4 w-9 h-9 rounded-[10px] bg-[#1e1b4b]">
+                  <f.icon className="w-[17px] h-[17px] text-[#818cf8]" />
                 </div>
-                <h3
-                  className="mb-2"
-                  style={{ fontSize: 14, fontWeight: 700, color: "#ffffff" }}
-                >
+                <h3 className="mb-2 text-sm font-bold text-white">
                   {f.title}
                 </h3>
-                <p style={{ fontSize: 13, color: "#71717a", lineHeight: 1.65 }}>
+                <p className="text-[13px] text-muted-foreground leading-[1.65]">
                   {f.desc}
                 </p>
               </div>
@@ -216,15 +123,7 @@ export default async function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer
-        className="flex items-center justify-between px-10"
-        style={{
-          borderTop: "1px solid #27272a",
-          height: 52,
-          fontSize: 12,
-          color: "#71717a",
-        }}
-      >
+      <footer className="flex flex-col sm:flex-row items-center justify-between gap-2 px-6 sm:px-10 py-4 border-t border-sidebar-border text-xs text-muted-foreground">
         <span>© {new Date().getFullYear()} CoWork</span>
         <span>Built with Next.js · Prisma · Auth.js</span>
       </footer>

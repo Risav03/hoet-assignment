@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Trash2, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 interface Workspace {
   id: string;
@@ -45,39 +46,35 @@ function SectionCard({
   title,
   description,
   children,
-  borderColor,
+  variant = "default",
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
-  borderColor?: string;
+  variant?: "default" | "danger";
 }) {
   return (
     <div
-      style={{
-        background: "#ffffff",
-        border: `1px solid ${borderColor ?? "#e4e4e7"}`,
-        borderRadius: 12,
-        boxShadow: "0 1px 3px rgba(0,0,0,.04)",
-        overflow: "hidden",
-      }}
+      className={cn(
+        "bg-card rounded-xl shadow-sm overflow-hidden",
+        variant === "danger" ? "border border-danger-border" : "border border-border"
+      )}
     >
-      <div style={{ padding: "20px 24px", borderBottom: "1px solid #f4f4f5" }}>
+      <div className="px-6 py-5 border-b border-muted">
         <p
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: borderColor ? borderColor : "#18181b",
-            marginBottom: description ? 2 : 0,
-          }}
+          className={cn(
+            "text-sm font-bold",
+            variant === "danger" ? "text-danger" : "text-foreground",
+            description ? "mb-0.5" : ""
+          )}
         >
           {title}
         </p>
         {description && (
-          <p style={{ fontSize: 12, color: "#71717a" }}>{description}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-      <div style={{ padding: "20px 24px" }}>{children}</div>
+      <div className="px-6 py-5">{children}</div>
     </div>
   );
 }
@@ -139,157 +136,72 @@ export function WorkspaceSettings({ workspace }: { workspace: Workspace }) {
   }
 
   return (
-    <div className="page-animate" style={{ padding: "36px 40px" }}>
+    <div className="page-animate p-5 md:p-9 md:px-10 max-h-screen overflow-y-auto">
       {/* Page header */}
       <div className="flex items-center gap-3 mb-8">
-        <div
-          className="flex items-center justify-center"
-          style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
-        >
-          <Settings style={{ width: 17, height: 17, color: "#4f46e5" }} />
+        <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-accent">
+          <Settings className="w-[17px] h-[17px] text-primary" />
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b" }}>
-          Workspace Settings
-        </h1>
+        <h1 className="text-[22px] font-extrabold text-foreground">Workspace Settings</h1>
       </div>
 
-      <div className="space-y-5" style={{ maxWidth: 660 }}>
+      <div className="space-y-5 max-w-[660px]">
         {/* General */}
         <SectionCard title="General" description="Update your workspace name and details">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1.5">
-              <Label
-                style={{ fontSize: 12, fontWeight: 600, color: "#3f3f46" }}
-              >
+              <Label className="text-xs font-semibold text-secondary-foreground">
                 Workspace name
               </Label>
               <Input
                 {...register("name")}
-                style={{
-                  border: "1.5px solid #e4e4e7",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 500,
-                }}
-                className="focus-visible:border-indigo-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
+                className="focus-visible:border-primary focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
               />
               {errors.name && (
                 <p className="text-sm text-destructive">{errors.name.message}</p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label
-                style={{ fontSize: 12, fontWeight: 600, color: "#3f3f46" }}
-              >
-                Slug
-              </Label>
+              <Label className="text-xs font-semibold text-secondary-foreground">Slug</Label>
               <Input
                 value={workspace.slug}
                 disabled
-                style={{
-                  border: "1.5px solid #e4e4e7",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  color: "#a1a1aa",
-                  background: "#f4f4f5",
-                }}
+                className="text-muted-foreground bg-muted"
               />
-              <p style={{ fontSize: 12, color: "#a1a1aa" }}>
+              <p className="text-xs text-muted-foreground">
                 Slug cannot be changed after creation.
               </p>
             </div>
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="font-semibold text-white"
-              style={{
-                background: "#4f46e5",
-                borderRadius: 8,
-                height: 36,
-                fontSize: 13,
-                boxShadow: "0 1px 2px rgba(79,70,229,.25)",
-              }}
+              className="font-semibold text-primary-foreground bg-primary h-9 shadow-[0_1px_2px_rgba(79,70,229,.25)]"
             >
-              {isSubmitting && (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              )}
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
               Save changes
             </Button>
           </form>
-        </SectionCard>
-
-        {/* Permissions */}
-        <SectionCard
-          title="Permissions"
-          description="Control what members can do in this workspace"
-        >
-          <div className="space-y-4">
-            {PERMISSIONS.map((perm) => (
-              <div
-                key={perm.id}
-                className="flex items-center justify-between"
-              >
-                <div>
-                  <p
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: "#18181b",
-                      marginBottom: 2,
-                    }}
-                  >
-                    {perm.label}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#71717a" }}>
-                    {perm.description}
-                  </p>
-                </div>
-                <Switch
-                  checked={permissions[perm.id]}
-                  onCheckedChange={(checked) =>
-                    setPermissions((prev) => ({ ...prev, [perm.id]: checked }))
-                  }
-                  className="ml-4"
-                />
-              </div>
-            ))}
-          </div>
         </SectionCard>
 
         {/* Danger zone */}
         <SectionCard
           title="Danger Zone"
           description="Irreversible actions — proceed with caution"
-          borderColor="#fecdd3"
+          variant="danger"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <p
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#18181b",
-                  marginBottom: 2,
-                }}
-              >
+              <p className="text-[13px] font-semibold text-foreground mb-0.5">
                 Delete workspace
               </p>
-              <p style={{ fontSize: 12, color: "#71717a" }}>
+              <p className="text-xs text-muted-foreground">
                 Permanently deletes the workspace and all documents.
               </p>
             </div>
             <Button
               disabled={deleting}
               onClick={handleDelete}
-              className="font-semibold text-white shrink-0 ml-4"
-              style={{
-                background: "#e11d48",
-                borderRadius: 8,
-                height: 34,
-                fontSize: 12,
-                paddingLeft: 14,
-                paddingRight: 14,
-              }}
+              className="font-semibold text-white bg-danger shrink-0 h-[34px] px-3.5 text-xs"
             >
               {deleting ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />

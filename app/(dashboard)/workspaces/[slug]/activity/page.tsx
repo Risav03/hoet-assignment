@@ -5,30 +5,31 @@ import { db } from "@/lib/db";
 import { Activity, Check, X, FileText, Edit, Users, Building2, GitPullRequest, Clock } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 const ACTION_CONFIG: Record<
   string,
   {
     label: string;
-    icon: React.ComponentType<{ style?: React.CSSProperties }>;
-    iconColor: string;
-    iconBg: string;
+    icon: React.ComponentType<{ className?: string }>;
+    iconColorClass: string;
+    iconBgClass: string;
   }
 > = {
-  PROPOSAL_COMMITTED: { label: "committed a proposal", icon: Check, iconColor: "#059669", iconBg: "#ecfdf5" },
-  PROPOSAL_CREATED:   { label: "submitted a proposal", icon: GitPullRequest, iconColor: "#4f46e5", iconBg: "#eef2ff" },
-  DOCUMENT_CREATED:   { label: "created a document", icon: FileText, iconColor: "#0ea5e9", iconBg: "#f0f9ff" },
-  DOCUMENT_UPDATED:   { label: "updated a document", icon: Edit, iconColor: "#d97706", iconBg: "#fffbeb" },
-  MEMBER_INVITED:     { label: "invited a member", icon: Users, iconColor: "#7c3aed", iconBg: "#f5f3ff" },
-  MEMBER_REMOVED:     { label: "removed a member", icon: Users, iconColor: "#7c3aed", iconBg: "#f5f3ff" },
-  MEMBER_ROLE_UPDATED:{ label: "updated a member's role", icon: Users, iconColor: "#7c3aed", iconBg: "#f5f3ff" },
-  PROPOSAL_ACCEPTED:  { label: "accepted a proposal", icon: Check, iconColor: "#059669", iconBg: "#ecfdf5" },
-  PROPOSAL_REJECTED:  { label: "rejected a proposal", icon: X, iconColor: "#e11d48", iconBg: "#fff1f2" },
-  VERSION_RESTORED:   { label: "restored a version", icon: Clock, iconColor: "#71717a", iconBg: "#f4f4f5" },
-  WORKSPACE_CREATED:  { label: "created this workspace", icon: Building2, iconColor: "#4f46e5", iconBg: "#eef2ff" },
-  DOCUMENT_ARCHIVED:  { label: "archived a document", icon: FileText, iconColor: "#d97706", iconBg: "#fffbeb" },
-  DOCUMENT_RESTORED:  { label: "restored a document", icon: FileText, iconColor: "#059669", iconBg: "#ecfdf5" },
-  DOCUMENT_DELETED:   { label: "deleted a document", icon: FileText, iconColor: "#e11d48", iconBg: "#fff1f2" },
+  PROPOSAL_COMMITTED: { label: "committed a proposal", icon: Check, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
+  PROPOSAL_CREATED:   { label: "submitted a proposal", icon: GitPullRequest, iconColorClass: "text-primary", iconBgClass: "bg-accent" },
+  DOCUMENT_CREATED:   { label: "created a document", icon: FileText, iconColorClass: "text-info", iconBgClass: "bg-info-soft" },
+  DOCUMENT_UPDATED:   { label: "updated a document", icon: Edit, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
+  MEMBER_INVITED:     { label: "invited a member", icon: Users, iconColorClass: "text-violet", iconBgClass: "bg-violet-soft" },
+  MEMBER_REMOVED:     { label: "removed a member", icon: Users, iconColorClass: "text-violet", iconBgClass: "bg-violet-soft" },
+  MEMBER_ROLE_UPDATED:{ label: "updated a member's role", icon: Users, iconColorClass: "text-violet", iconBgClass: "bg-violet-soft" },
+  PROPOSAL_ACCEPTED:  { label: "accepted a proposal", icon: Check, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
+  PROPOSAL_REJECTED:  { label: "rejected a proposal", icon: X, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
+  VERSION_RESTORED:   { label: "restored a version", icon: Clock, iconColorClass: "text-muted-foreground", iconBgClass: "bg-muted" },
+  WORKSPACE_CREATED:  { label: "created this workspace", icon: Building2, iconColorClass: "text-primary", iconBgClass: "bg-accent" },
+  DOCUMENT_ARCHIVED:  { label: "archived a document", icon: FileText, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
+  DOCUMENT_RESTORED:  { label: "restored a document", icon: FileText, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
+  DOCUMENT_DELETED:   { label: "deleted a document", icon: FileText, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
 };
 
 const FILTER_CHIPS = [
@@ -66,18 +67,13 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
     },
   });
 
-  // Filter by category
   const filtered = logs.filter((log) => {
-    if (activeFilter === "documents")
-      return log.action.startsWith("DOCUMENT");
-    if (activeFilter === "proposals")
-      return log.action.startsWith("PROPOSAL");
-    if (activeFilter === "members")
-      return log.action.startsWith("MEMBER") || log.action === "WORKSPACE_CREATED";
+    if (activeFilter === "documents") return log.action.startsWith("DOCUMENT");
+    if (activeFilter === "proposals") return log.action.startsWith("PROPOSAL");
+    if (activeFilter === "members") return log.action.startsWith("MEMBER") || log.action === "WORKSPACE_CREATED";
     return true;
   });
 
-  // Group by date
   const grouped: Record<string, typeof filtered> = {};
   for (const log of filtered) {
     const dateKey = format(new Date(log.createdAt), "PP");
@@ -86,39 +82,30 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
   }
 
   return (
-    <div className="page-animate max-h-screen overflow-y-auto" style={{ padding: "36px 40px" }}>
+    <div className="page-animate max-h-screen overflow-y-auto p-5 md:p-9 md:px-10">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-4">
-          <div
-            className="flex items-center justify-center"
-            style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
-          >
-            <Activity style={{ width: 17, height: 17, color: "#4f46e5" }} />
+          <div className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-accent">
+            <Activity className="w-[17px] h-[17px] text-primary" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 2 }}>
-              Activity
-            </h1>
-            <p style={{ fontSize: 13, color: "#71717a" }}>{workspace.name}</p>
+            <h1 className="text-[22px] font-extrabold text-foreground mb-0.5">Activity</h1>
+            <p className="text-[13px] text-muted-foreground">{workspace.name}</p>
           </div>
         </div>
 
         {/* Filter chips */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {FILTER_CHIPS.map((chip) => (
             <a key={chip.value} href={`?filter=${chip.value}`}>
               <span
-                className="inline-block cursor-pointer rounded-full font-semibold transition-all"
-                style={{
-                  padding: "4px 14px",
-                  fontSize: 12,
-                  background: activeFilter === chip.value ? "#18181b" : "#ffffff",
-                  color: activeFilter === chip.value ? "#ffffff" : "#71717a",
-                  border: activeFilter === chip.value
-                    ? "1px solid #18181b"
-                    : "1px solid #e4e4e7",
-                }}
+                className={cn(
+                  "inline-block cursor-pointer rounded-full font-semibold transition-all text-xs px-[14px] py-1",
+                  activeFilter === chip.value
+                    ? "bg-foreground text-background border border-foreground"
+                    : "bg-card text-muted-foreground border border-border"
+                )}
               >
                 {chip.label}
               </span>
@@ -129,8 +116,8 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
 
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
-          <Activity style={{ width: 40, height: 40, color: "#d4d4d8", marginBottom: 12 }} />
-          <p style={{ fontSize: 13, color: "#a1a1aa" }}>No activity yet</p>
+          <Activity className="w-10 h-10 text-muted mb-3" />
+          <p className="text-[13px] text-muted-foreground">No activity yet</p>
         </div>
       ) : (
         <div>
@@ -138,22 +125,13 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
             <div key={date} className="mb-8">
               {/* Date group label */}
               <div className="flex items-center gap-3 mb-4">
-                <span
-                  className="uppercase"
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#a1a1aa",
-                    letterSpacing: "0.06em",
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                <span className="uppercase text-[11px] font-bold text-muted-foreground tracking-[0.06em] whitespace-nowrap">
                   {date}
                 </span>
-                <div style={{ flex: 1, height: 1, background: "#f0f0f0" }} />
+                <div className="flex-1 h-px bg-muted" />
               </div>
 
-              {/* Timeline — flex stepper, no absolute positioning */}
+              {/* Timeline */}
               <div>
                 {dateLogs.map((log, idx) => {
                   const config = ACTION_CONFIG[log.action];
@@ -169,49 +147,27 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
                       style={{ animationDelay: `${Math.min(idx, 7) * 40}ms` }}
                     >
                       {/* Left column: icon circle + connector line */}
-                      <div className="flex flex-col items-center" style={{ width: 30, flexShrink: 0 }}>
-                        {/* Colored icon circle */}
-                        <div
-                          className="flex items-center justify-center"
-                          style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: "50%",
-                            background: config?.iconBg ?? "#f4f4f5",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <IconComponent
-                            style={{
-                              width: 13,
-                              height: 13,
-                              color: config?.iconColor ?? "#71717a",
-                            }}
-                          />
+                      <div className="flex flex-col items-center w-[30px] shrink-0">
+                        <div className={cn("flex items-center justify-center w-[30px] h-[30px] rounded-full shrink-0", config?.iconBgClass ?? "bg-muted")}>
+                          <IconComponent className={cn("w-[13px] h-[13px]", config?.iconColorClass ?? "text-muted-foreground")} />
                         </div>
-                        {/* Connector line */}
                         {!isLast && (
-                          <div
-                            style={{
-                              width: 1,
-                              flex: 1,
-                              background: "#e4e4e7",
-                              marginTop: 4,
-                              minHeight: 20,
-                            }}
-                          />
+                          <div className="w-px flex-1 bg-border mt-1 min-h-5" />
                         )}
                       </div>
 
-                      {/* Right column: text + metadata + time */}
+                      {/* Right column */}
                       <div
-                        className="flex-1 flex items-start justify-between gap-4 min-w-0"
-                        style={{ paddingBottom: isLast ? 0 : 20, paddingTop: 4 }}
+                        className={cn(
+                          "flex-1 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-4 min-w-0",
+                          isLast ? "pb-0" : "pb-5",
+                          "pt-1"
+                        )}
                       >
                         <div className="flex-1 min-w-0">
-                          <p style={{ fontSize: 13, color: "#18181b", lineHeight: 1.5 }}>
-                            <span style={{ fontWeight: 600 }}>{log.user.name}</span>{" "}
-                            <span style={{ color: "#71717a" }}>
+                          <p className="text-[13px] text-foreground leading-[1.5]">
+                            <span className="font-semibold">{log.user.name}</span>{" "}
+                            <span className="text-muted-foreground">
                               {config?.label ?? log.action.toLowerCase().replace(/_/g, " ")}
                             </span>
                             {isDocAction && log.entityId && (
@@ -229,17 +185,7 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
 
                           {/* Detail pill */}
                           {log.metadata && (
-                            <div
-                              className="mt-1.5 inline-block"
-                              style={{
-                                background: "#fafafa",
-                                border: "1px solid #f0f0f0",
-                                borderRadius: 7,
-                                padding: "2px 10px",
-                                fontSize: 12,
-                                color: "#71717a",
-                              }}
-                            >
+                            <div className="mt-1.5 inline-block bg-secondary border border-muted rounded-lg px-2.5 py-0.5 text-xs text-muted-foreground">
                               {typeof log.metadata === "string"
                                 ? log.metadata
                                 : JSON.stringify(log.metadata).slice(0, 80)}
@@ -248,10 +194,7 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
                         </div>
 
                         {/* Time */}
-                        <span
-                          className="shrink-0"
-                          style={{ fontSize: 11, color: "#a1a1aa" }}
-                        >
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
                           {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
                         </span>
                       </div>
