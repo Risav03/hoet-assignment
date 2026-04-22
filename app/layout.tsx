@@ -12,9 +12,19 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "CoWork — Collaborative Workspace Platform",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  ),
+  title: {
+    default: "CoWork — Collaborative Workspace Platform",
+    template: "%s — CoWork",
+  },
   description:
     "A local-first, real-time collaborative workspace for teams. Edit offline, propose changes, review history.",
+  openGraph: {
+    siteName: "CoWork",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

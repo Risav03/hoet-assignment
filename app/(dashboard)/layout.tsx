@@ -1,7 +1,17 @@
+import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { Sidebar, MobileHeader } from "@/components/layout/sidebar";
 import { getUserWorkspaces } from "@/lib/dal/workspace";
+
+export const metadata: Metadata = {
+  title: {
+    default: "CoWork",
+    template: "%s — CoWork",
+  },
+  description:
+    "Collaborate on documents in real time. Propose changes, review history, and use AI — all in one workspace.",
+};
 
 export default async function DashboardLayout({
   children,
