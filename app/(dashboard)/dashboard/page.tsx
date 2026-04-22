@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { getUserWorkspaces } from "@/lib/dal/workspace";
+import { getSession } from "@/lib/session";
+import { getCachedUserWorkspaces } from "@/lib/dal/cached";
 import Link from "next/link";
 import { Users, FileText, Clock, Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -14,10 +14,10 @@ function getRoleBadgeClass(role: string) {
 }
 
 export default async function DashboardPage() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
-  const memberships = await getUserWorkspaces(session.user.id);
+  const memberships = await getCachedUserWorkspaces(session.user.id);
   const firstName = session.user.name?.split(" ")[0];
 
   return (

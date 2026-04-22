@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug } from "@/lib/dal/workspace";
 import { WorkspaceAiAssistant } from "@/components/ai/workspace-ai-assistant";
 
@@ -8,7 +8,7 @@ interface PageProps {
 }
 
 export default async function WorkspaceAiAssistantPage({ params }: PageProps) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
   const { slug } = await params;

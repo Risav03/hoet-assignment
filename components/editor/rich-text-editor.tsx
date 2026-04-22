@@ -20,7 +20,7 @@ import {
   Redo,
   Baseline,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -168,32 +168,30 @@ export function RichTextEditor({
 
           {/* Colour palette */}
           <Tooltip>
-            <TooltipTrigger>
-              <div className="flex items-center gap-0.5 px-1">
-                <Baseline className="w-3.5 h-3.5 text-slate-400 mr-0.5" />
-                {COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    title={c.label}
-                    onClick={() => {
-                      if (c.value) {
-                        editor.chain().focus().setColor(c.value).run();
-                      } else {
-                        editor.chain().focus().unsetColor().run();
-                      }
-                    }}
-                    className={cn(
-                      "w-4 h-4 rounded-full border transition-all hover:scale-110",
-                      c.value
-                        ? "border-transparent"
-                        : "border-slate-300 bg-white dark:bg-slate-800",
-                      activeColor === c.value && c.value && "ring-2 ring-offset-1 ring-slate-400"
-                    )}
-                    style={c.value ? { backgroundColor: c.value } : undefined}
-                  />
-                ))}
-              </div>
+            <TooltipTrigger render={<div />} className="flex items-center gap-0.5 px-1">
+              <Baseline className="w-3.5 h-3.5 text-slate-400 mr-0.5" />
+              {COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  title={c.label}
+                  onClick={() => {
+                    if (c.value) {
+                      editor.chain().focus().setColor(c.value).run();
+                    } else {
+                      editor.chain().focus().unsetColor().run();
+                    }
+                  }}
+                  className={cn(
+                    "w-4 h-4 rounded-full border transition-all hover:scale-110",
+                    c.value
+                      ? "border-transparent"
+                      : "border-slate-300 bg-white dark:bg-slate-800",
+                    activeColor === c.value && c.value && "ring-2 ring-offset-1 ring-slate-400"
+                  )}
+                  style={c.value ? { backgroundColor: c.value } : undefined}
+                />
+              ))}
             </TooltipTrigger>
             <TooltipContent>Text colour</TooltipContent>
           </Tooltip>
@@ -238,20 +236,21 @@ function ToolbarButton({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onClick}
-          disabled={disabled}
-          className={cn(
-            "h-8 w-8 p-0",
-            active && "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100"
-          )}
-        >
-          {children}
-        </Button>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "h-8 w-8 p-0",
+              active && "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+            )}
+          />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

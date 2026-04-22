@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { getWorkspaceDocuments } from "@/lib/dal/document";
 import Link from "next/link";
@@ -14,22 +14,22 @@ interface PageProps {
 }
 
 export default async function DocumentsPage({ params, searchParams }: PageProps) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
-  const { slug } = await params;
-  const { query, archived } = await searchParams;
+  const [{ slug }, { query, archived }] = await Promise.all([params, searchParams]);
 
   const workspace = await getWorkspaceBySlug(slug, session.user.id);
   if (!workspace) notFound();
 
-  const member = await getWorkspaceMember(workspace.id, session.user.id);
+  const [member, { documents }] = await Promise.all([
+    getWorkspaceMember(workspace.id, session.user.id),
+    getWorkspaceDocuments(workspace.id, session.user.id, {
+      query,
+      isArchived: archived === "true",
+    }),
+  ]);
   if (!member) redirect("/dashboard");
-
-  const { documents } = await getWorkspaceDocuments(workspace.id, session.user.id, {
-    query,
-    isArchived: archived === "true",
-  });
 
   const canCreate = member.role === "OWNER" || member.role === "EDITOR";
 

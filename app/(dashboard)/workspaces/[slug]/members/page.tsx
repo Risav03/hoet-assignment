@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug, getWorkspaceMembers, getWorkspaceMember } from "@/lib/dal/workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Users } from "lucide-react";
@@ -19,17 +19,18 @@ function getRoleBadgeClass(role: string) {
 }
 
 export default async function MembersPage({ params }: PageProps) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
   const { slug } = await params;
   const workspace = await getWorkspaceBySlug(slug, session.user.id);
   if (!workspace) notFound();
 
-  const currentMember = await getWorkspaceMember(workspace.id, session.user.id);
+  const [currentMember, members] = await Promise.all([
+    getWorkspaceMember(workspace.id, session.user.id),
+    getWorkspaceMembers(workspace.id, session.user.id),
+  ]);
   if (!currentMember) redirect("/dashboard");
-
-  const members = await getWorkspaceMembers(workspace.id, session.user.id);
   const isOwner = currentMember.role === "OWNER";
 
   return (

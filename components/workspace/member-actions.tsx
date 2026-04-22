@@ -7,7 +7,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { MoreHorizontal, UserCheck, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -62,14 +63,20 @@ export function MemberActions({ workspaceId, userId, currentRole }: MemberAction
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={loading}>
-          {loading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <MoreHorizontal className="w-4 h-4" />
-          )}
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            disabled={loading}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 w-8 p-0")}
+          />
+        }
+      >
+        {loading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <MoreHorizontal className="w-4 h-4" />
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {currentRole !== "EDITOR" && (

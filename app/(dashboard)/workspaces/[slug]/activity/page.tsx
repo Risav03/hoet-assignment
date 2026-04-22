@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { db } from "@/lib/db";
 import { Activity, Check, X, FileText, Edit, Users, Building2, GitPullRequest, Clock } from "lucide-react";
@@ -45,27 +45,27 @@ interface PageProps {
 }
 
 export default async function ActivityPage({ params, searchParams }: PageProps) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
-  const { slug } = await params;
-  const { filter } = await searchParams;
+  const [{ slug }, { filter }] = await Promise.all([params, searchParams]);
   const activeFilter = filter ?? "all";
 
   const workspace = await getWorkspaceBySlug(slug, session.user.id);
   if (!workspace) notFound();
 
-  const member = await getWorkspaceMember(workspace.id, session.user.id);
+  const [member, logs] = await Promise.all([
+    getWorkspaceMember(workspace.id, session.user.id),
+    db.activityLog.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    }),
+  ]);
   if (!member) redirect("/dashboard");
-
-  const logs = await db.activityLog.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    include: {
-      user: { select: { id: true, name: true, email: true } },
-    },
-  });
 
   const filtered = logs.filter((log) => {
     if (activeFilter === "documents") return log.action.startsWith("DOCUMENT");

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { Sidebar, MobileHeader } from "@/components/layout/sidebar";
-import { getUserWorkspaces } from "@/lib/dal/workspace";
+import { getSession } from "@/lib/session";
+import { getCachedUserWorkspaces } from "@/lib/dal/cached";
 
 export const metadata: Metadata = {
   title: {
@@ -18,10 +18,10 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
-  const memberships = await getUserWorkspaces(session.user.id);
+  const memberships = await getCachedUserWorkspaces(session.user.id);
   const workspaces = memberships.map((m: typeof memberships[0]) => m.workspace);
 
   const user = { name: session.user.name ?? "", email: session.user.email ?? "" };

@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { getWorkspaceProposals } from "@/lib/dal/proposal";
 import { ProposalCard } from "@/components/proposals/proposal-card";
@@ -14,23 +14,23 @@ interface PageProps {
 const TABS = ["PENDING", "COMMITTED", "REJECTED"] as const;
 
 export default async function ProposalsPage({ params, searchParams }: PageProps) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
-  const { slug } = await params;
-  const { status } = await searchParams;
+  const [{ slug }, { status }] = await Promise.all([params, searchParams]);
 
   const workspace = await getWorkspaceBySlug(slug, session.user.id);
   if (!workspace) notFound();
 
-  const member = await getWorkspaceMember(workspace.id, session.user.id);
-  if (!member) redirect("/dashboard");
-
-  const { proposals } = await getWorkspaceProposals(workspace.id, session.user.id, {
-    status: status as "PENDING" | "COMMITTED" | "REJECTED" | undefined,
-  });
-
   const activeTab = (TABS.find((t) => t === status) ?? "PENDING") as typeof TABS[number];
+
+  const [member, { proposals }] = await Promise.all([
+    getWorkspaceMember(workspace.id, session.user.id),
+    getWorkspaceProposals(workspace.id, session.user.id, {
+      status: activeTab,
+    }),
+  ]);
+  if (!member) redirect("/dashboard");
 
   return (
     <div className="page-animate p-5 md:p-9 md:px-10">
@@ -67,7 +67,7 @@ export default async function ProposalsPage({ params, searchParams }: PageProps)
         </div>
       </div>
 
-      {proposals.length === 0 ? (
+      {proposals.length === 0 || !activeTab ? (
         <div className="flex flex-col items-center justify-center py-16">
           <GitPullRequest className="w-10 h-10 text-muted mb-3" />
           <h3 className="text-sm font-semibold text-secondary-foreground mb-1.5">No proposals</h3>

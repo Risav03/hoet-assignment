@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { auth } from "@/auth";
-import { redirect } from "next/navigation";
 import { Zap, GitPullRequest, Radio, Clock, Bot, Shield } from "lucide-react";
 
-export default async function LandingPage() {
+export default function LandingPage() {
 
   const features = [
     {

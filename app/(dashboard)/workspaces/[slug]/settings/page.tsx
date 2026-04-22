@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
+import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { WorkspaceSettings } from "@/components/workspace/workspace-settings";
 
@@ -8,7 +8,7 @@ interface PageProps {
 }
 
 export default async function WorkspaceSettingsPage({ params }: PageProps) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/login");
 
   const { slug } = await params;
