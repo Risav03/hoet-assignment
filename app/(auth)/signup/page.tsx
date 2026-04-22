@@ -40,6 +40,7 @@ export default function SignupPage() {
         password: data.password,
         redirect: false,
       });
+      toast.success("Account created successfully");
       router.push("/dashboard");
       router.refresh();
     } finally {

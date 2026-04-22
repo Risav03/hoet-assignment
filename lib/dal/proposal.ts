@@ -27,7 +27,8 @@ export async function getWorkspaceProposals(
     ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     include: {
       author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-      document: { select: { id: true, title: true } },
+      document: { select: { id: true, title: true, contentSnapshot: true } },
+      baseVersion: { select: { id: true, contentSnapshot: true, versionNumber: true } },
       votes: {
         include: {
           user: { select: { id: true, name: true } },

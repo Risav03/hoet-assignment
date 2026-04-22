@@ -27,9 +27,9 @@ export default async function DashboardLayout({
   const user = { name: session.user.name ?? "", email: session.user.email ?? "" };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-full">
       <Sidebar user={user} workspaces={workspaces} />
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <MobileHeader user={user} workspaces={workspaces} />
         <main className="flex-1 overflow-auto bg-background">{children}</main>
       </div>

@@ -39,14 +39,14 @@ export default function RootLayout({
       lang="en"
       className={`${plusJakartaSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
+      <body className="h-full flex flex-col bg-background text-foreground">
         <AuthSessionProvider>
           <TooltipProvider>
             <Suspense fallback={null}>
               <ProgressBar />
             </Suspense>
             {children}
-            <Toaster richColors position="top-right" />
+            <Toaster richColors position="bottom-right" />
           </TooltipProvider>
         </AuthSessionProvider>
       </body>

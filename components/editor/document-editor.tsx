@@ -277,7 +277,7 @@ export function DocumentEditor({
               Draft
             </span>
             {canEdit && !previewVersion && (
-              <>
+              membersCount === 1 ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -294,28 +294,23 @@ export function DocumentEditor({
                     </>
                   )}
                 </Button>
-                {membersCount > 1 ? (
-                  <Button
-                    size="sm"
-                    onClick={handlePropose}
-                    disabled={proposing}
-                    className="font-semibold text-primary-foreground bg-primary rounded-lg text-xs h-8 shadow-[0_1px_2px_rgba(79,70,229,.25)]"
-                  >
-                    {proposing ? (
-                      "Submitting…"
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5 sm:mr-1" />
-                        <span className="hidden sm:inline">Propose</span>
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <span className="hidden sm:inline text-xs text-muted-foreground italic">
-                    Only collaborator
-                  </span>
-                )}
-              </>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={handlePropose}
+                  disabled={proposing}
+                  className="font-semibold text-primary-foreground bg-primary rounded-lg text-xs h-8 shadow-[0_1px_2px_rgba(79,70,229,.25)]"
+                >
+                  {proposing ? (
+                    "Submitting…"
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5 sm:mr-1" />
+                      <span className="hidden sm:inline">Propose</span>
+                    </>
+                  )}
+                </Button>
+              )
             )}
 
             {/* Info/panel toggle on mobile (<lg) */}

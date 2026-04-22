@@ -35,6 +35,7 @@ function LoginForm() {
       if (result?.error) {
         toast.error("Invalid email or password");
       } else {
+        toast.success("Logged in successfully");
         router.push(callbackUrl);
         router.refresh();
       }

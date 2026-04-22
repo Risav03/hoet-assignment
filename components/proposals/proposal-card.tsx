@@ -3,10 +3,11 @@ import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Check, X, Loader2, FileText, GitPullRequest } from "lucide-react";
+import { Check, X, Loader2, FileText, GitPullRequest, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { ProposalDiff } from "./proposal-diff";
 
 interface Vote {
   id: string;
@@ -21,7 +22,12 @@ interface Proposal {
   patch: string;
   createdAt: string;
   author: { id: string; name: string; email: string; avatarUrl?: string | null };
-  document: { id: string; title: string };
+  document: { id: string; title: string; contentSnapshot: string };
+  baseVersion?: {
+    id: string;
+    contentSnapshot: string;
+    versionNumber: number;
+  } | null;
   votes: Vote[];
 }
 
@@ -42,6 +48,8 @@ const STATUS_CLASS: Record<string, string> = {
 export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) {
   const router = useRouter();
   const [voting, setVoting] = useState<"APPROVE" | "REJECT" | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+
   const canVote =
     (userRole === "OWNER" || userRole === "EDITOR") && proposal.status === "PENDING";
   const myVote = proposal.votes.find((v) => v.user.id === userId);
@@ -79,7 +87,7 @@ export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) 
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl p-[18px] pb-[18px] shadow-sm">
+    <div className="bg-card border border-border rounded-xl p-[18px] shadow-sm">
       {/* Header row */}
       <div className="flex items-start gap-3 mb-4">
         <div className="flex items-center justify-center shrink-0 w-9 h-9 rounded-[10px] bg-accent">
@@ -142,42 +150,69 @@ export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) 
         </div>
       </div>
 
-      {/* Action buttons */}
-      {canVote && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
-          {myVote && (
-            <span className="text-xs text-muted-foreground text-center sm:text-left">
-              You voted: {myVote.decision === "APPROVE" ? "✓ Approve" : "✗ Reject"}
-            </span>
+      {/* View changes toggle + action buttons */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
+        {/* View changes */}
+        <button
+          onClick={() => setShowDiff((v) => !v)}
+          className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showDiff ? (
+            <ChevronUp className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5" />
           )}
-          <Button
-            size="sm"
-            disabled={!!voting}
-            onClick={() => handleVote("APPROVE")}
-            className="font-semibold text-white bg-success rounded-lg text-xs h-[30px] px-3"
-          >
-            {voting === "APPROVE" ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Check className="w-3 h-3 mr-1" />
+          {showDiff ? "Hide changes" : "View changes"}
+        </button>
+
+        {/* Vote actions */}
+        {canVote && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-end">
+            {myVote && (
+              <span className="text-xs text-muted-foreground text-center sm:text-left">
+                You voted: {myVote.decision === "APPROVE" ? "✓ Approve" : "✗ Reject"}
+              </span>
             )}
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!!voting}
-            onClick={() => handleVote("REJECT")}
-            className="rounded-lg text-xs h-[30px] px-3 text-muted-foreground border-border"
-          >
-            {voting === "REJECT" ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <X className="w-3 h-3 mr-1" />
-            )}
-            Reject
-          </Button>
-        </div>
+            <Button
+              size="sm"
+              disabled={!!voting}
+              onClick={() => handleVote("APPROVE")}
+              className="font-semibold text-white bg-success rounded-lg text-xs h-[30px] px-3"
+            >
+              {voting === "APPROVE" ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Check className="w-3 h-3 mr-1" />
+              )}
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!!voting}
+              onClick={() => handleVote("REJECT")}
+              className="rounded-lg text-xs h-[30px] px-3 text-muted-foreground border-border"
+            >
+              {voting === "REJECT" ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <X className="w-3 h-3 mr-1" />
+              )}
+              Reject
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Diff panel */}
+      {showDiff && (
+        <ProposalDiff
+          documentId={proposal.document.id}
+          documentTitle={proposal.document.title}
+          dbContent={proposal.document.contentSnapshot}
+          rawPatch={proposal.patch}
+          baseVersion={proposal.baseVersion}
+        />
       )}
     </div>
   );

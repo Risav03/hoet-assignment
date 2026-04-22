@@ -82,7 +82,7 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
   }
 
   return (
-    <div className="page-animate max-h-screen overflow-y-auto p-5 md:p-9 md:px-10">
+    <div className="page-animate p-5 md:p-9 md:px-10">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-4">
