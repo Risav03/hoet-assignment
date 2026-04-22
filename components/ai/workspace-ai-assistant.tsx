@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bot, Send, Loader2, FileText, X } from "lucide-react";
+import { Sparkles, Send, Loader2, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -29,7 +29,6 @@ interface WorkspaceAiAssistantProps {
   workspaceName: string;
 }
 
-// Render message content and turn @[Title](docId) tokens into clickable links
 function MessageContent({
   content,
   workspaceSlug,
@@ -49,7 +48,8 @@ function MessageContent({
       <Link
         key={match.index}
         href={`/workspaces/${workspaceSlug}/documents/${docId}`}
-        className="text-indigo-600 underline underline-offset-2 hover:text-indigo-800"
+        className="underline underline-offset-2 hover:opacity-80"
+        style={{ color: "#818cf8" }}
       >
         @{title}
       </Link>
@@ -60,6 +60,13 @@ function MessageContent({
   return <>{parts}</>;
 }
 
+const SUGGESTION_CHIPS = [
+  "Summarize this meeting",
+  "Draft an announcement",
+  "What are the action items?",
+  "Explain this technical concept",
+];
+
 export function WorkspaceAiAssistant({
   workspaceId,
   workspaceSlug,
@@ -69,7 +76,6 @@ export function WorkspaceAiAssistant({
   const [input, setInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
-  // @mention state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [mentionedDocs, setMentionedDocs] = useState<MentionedDoc[]>([]);
@@ -119,7 +125,6 @@ export function WorkspaceAiAssistant({
     setMentionQuery(null);
     setChatLoading(true);
 
-    // Collect doc IDs referenced in this message via @[Title](docId) tokens
     const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
     const referencedIds = new Set<string>();
     let m: RegExpExecArray | null;
@@ -154,7 +159,6 @@ export function WorkspaceAiAssistant({
     }
   }, [input, chatLoading, messages, workspaceId]);
 
-  // Detect @mention in the textarea and fetch suggestions inline
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const val = e.target.value;
@@ -172,7 +176,6 @@ export function WorkspaceAiAssistant({
       const query = atMatch[1];
       setMentionQuery(query);
 
-      // Cancel any in-flight fetch
       fetchControllerRef.current?.abort();
       const controller = new AbortController();
       fetchControllerRef.current = controller;
@@ -192,9 +195,7 @@ export function WorkspaceAiAssistant({
           );
           setActiveSuggestion(0);
         })
-        .catch(() => {
-          // aborted or network error — ignore
-        })
+        .catch(() => {})
         .finally(() => setSuggestionLoading(false));
     },
     [workspaceId]
@@ -239,115 +240,204 @@ export function WorkspaceAiAssistant({
   }, []);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-8 py-5 border-b shrink-0">
-        <Bot className="w-6 h-6 text-indigo-500" />
-        <div>
-          <h1 className="text-xl font-bold">AI Assistant</h1>
-          <p className="text-slate-500 text-xs">
-            {workspaceName} &mdash; type @ to reference a document
-          </p>
+    <div className="flex flex-col" style={{ height: "100%", background: "#fafafa" }}>
+      {/* Top bar — 52px */}
+      <div
+        className="flex items-center gap-3 px-6 shrink-0"
+        style={{
+          height: 52,
+          background: "#ffffff",
+          borderBottom: "1px solid #e4e4e7",
+        }}
+      >
+        <div
+          className="flex items-center justify-center shrink-0"
+          style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff" }}
+        >
+          <Sparkles style={{ width: 15, height: 15, color: "#818cf8" }} />
         </div>
+        <div>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>AI Assistant</p>
+        </div>
+        <span
+          className="ml-2 rounded-full px-2.5 py-0.5 font-semibold text-xs"
+          style={{ background: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" }}
+        >
+          {workspaceName}
+        </span>
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-8 py-6" ref={scrollRef}>
-        {messages.length === 0 ? (
-          <div className="text-center py-24 text-slate-400">
-            <Bot className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p className="text-sm font-medium mb-1">How can I help you today?</p>
-            <p className="text-xs mb-6 text-slate-400">
-              Type @ to reference a document from{" "}
-              <span className="font-medium text-slate-500">{workspaceName}</span>
-            </p>
-            <div className="flex flex-wrap gap-2 justify-center max-w-lg mx-auto">
-              {[
-                "Summarize this meeting",
-                "Draft an announcement",
-                "What are the action items?",
-                "Explain this technical concept",
-              ].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setInput(s)}
-                  className="text-xs px-4 py-2 rounded-full border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-5 max-w-3xl mx-auto">
-            {messages.map((msg) => (
+      <ScrollArea className="flex-1" ref={scrollRef}>
+        <div style={{ padding: "28px 40px" }}>
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center text-center py-20">
               <div
-                key={msg.id}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className="flex items-center justify-center mb-5"
+                style={{ width: 52, height: 52, borderRadius: 16, background: "#eef2ff" }}
               >
-                {msg.role === "assistant" && (
-                  <Avatar className="w-7 h-7 shrink-0 mt-0.5">
-                    <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs">
+                <Sparkles style={{ width: 22, height: 22, color: "#818cf8" }} />
+              </div>
+              <p style={{ fontSize: 15, fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
+                How can I help you today?
+              </p>
+              <p style={{ fontSize: 13, color: "#71717a", marginBottom: 24 }}>
+                Type @ to reference a document from{" "}
+                <span style={{ fontWeight: 600, color: "#3f3f46" }}>{workspaceName}</span>
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center" style={{ maxWidth: 480 }}>
+                {SUGGESTION_CHIPS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setInput(s)}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      padding: "6px 16px",
+                      borderRadius: 20,
+                      border: "1px solid #e4e4e7",
+                      background: "#ffffff",
+                      color: "#3f3f46",
+                      cursor: "pointer",
+                      transition: "all 150ms",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#c7d2fe";
+                      (e.currentTarget as HTMLButtonElement).style.background = "#eef2ff";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#e4e4e7";
+                      (e.currentTarget as HTMLButtonElement).style.background = "#ffffff";
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5" style={{ maxWidth: 680, margin: "0 auto" }}>
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  {msg.role === "assistant" && (
+                    <Avatar style={{ width: 28, height: 28, flexShrink: 0, marginTop: 2 }}>
+                      <AvatarFallback
+                        className="text-xs font-bold"
+                        style={{ background: "#eef2ff", color: "#4338ca" }}
+                      >
+                        AI
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  <div
+                    style={{
+                      maxWidth: "75%",
+                      padding: "10px 14px",
+                      fontSize: 13,
+                      lineHeight: 1.65,
+                      whiteSpace: "pre-wrap",
+                      ...(msg.role === "user"
+                        ? {
+                            background: "#4f46e5",
+                            color: "#ffffff",
+                            borderRadius: "12px 4px 12px 12px",
+                          }
+                        : {
+                            background: "#ffffff",
+                            color: "#18181b",
+                            border: "1px solid #e4e4e7",
+                            borderRadius: "4px 12px 12px 12px",
+                            boxShadow: "0 1px 3px rgba(0,0,0,.06)",
+                          }),
+                    }}
+                  >
+                    <MessageContent content={msg.content} workspaceSlug={workspaceSlug} />
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex gap-3">
+                  <Avatar style={{ width: 28, height: 28, marginTop: 2 }}>
+                    <AvatarFallback
+                      className="text-xs font-bold"
+                      style={{ background: "#eef2ff", color: "#4338ca" }}
+                    >
                       AI
                     </AvatarFallback>
                   </Avatar>
-                )}
-                <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100"
-                  }`}
-                >
-                  <MessageContent content={msg.content} workspaceSlug={workspaceSlug} />
+                  <div
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e4e4e7",
+                      borderRadius: "4px 12px 12px 12px",
+                      padding: "10px 14px",
+                      boxShadow: "0 1px 3px rgba(0,0,0,.06)",
+                    }}
+                  >
+                    <Loader2 style={{ width: 16, height: 16, color: "#a1a1aa" }} className="animate-spin" />
+                  </div>
                 </div>
-              </div>
-            ))}
-            {chatLoading && (
-              <div className="flex gap-3">
-                <Avatar className="w-7 h-7 mt-0.5">
-                  <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs">
-                    AI
-                  </AvatarFallback>
-                </Avatar>
-                <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3">
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </ScrollArea>
 
-      {/* Input area */}
-      <div className="border-t px-8 py-4 shrink-0 bg-white dark:bg-slate-950">
-        <div className="max-w-3xl mx-auto">
+      {/* Input bar */}
+      <div
+        className="shrink-0"
+        style={{
+          borderTop: "1px solid #e4e4e7",
+          background: "#ffffff",
+          padding: "16px 40px",
+        }}
+      >
+        <div style={{ maxWidth: 680, margin: "0 auto" }}>
           {/* Mentioned doc chips */}
           {mentionedDocs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {mentionedDocs.map((doc) => (
                 <span
                   key={doc.id}
-                  className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-2.5 py-0.5"
+                  className="flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold"
+                  style={{
+                    fontSize: 11,
+                    background: "#eef2ff",
+                    color: "#4338ca",
+                    border: "1px solid #c7d2fe",
+                  }}
                 >
-                  <FileText className="w-3 h-3" />
+                  <FileText style={{ width: 11, height: 11 }} />
                   {doc.title}
                   <button
                     onClick={() => removeMentionedDoc(doc.id)}
-                    className="ml-0.5 hover:text-indigo-900"
+                    className="ml-0.5 hover:opacity-70"
                   >
-                    <X className="w-3 h-3" />
+                    <X style={{ width: 11, height: 11 }} />
                   </button>
                 </span>
               ))}
             </div>
           )}
 
-          {/* @mention suggestion popover */}
+          {/* Mention suggestion popover */}
           {(suggestions.length > 0 || suggestionLoading) && mentionQuery !== null && (
-            <div className="mb-2 border rounded-lg shadow-md bg-white dark:bg-slate-900 overflow-hidden">
+            <div
+              className="mb-2 overflow-hidden"
+              style={{
+                border: "1px solid #e4e4e7",
+                borderRadius: 8,
+                boxShadow: "0 4px 12px rgba(0,0,0,.08)",
+                background: "#ffffff",
+              }}
+            >
               {suggestionLoading ? (
-                <div className="px-3 py-2 text-xs text-slate-400">Searching…</div>
+                <div style={{ padding: "8px 12px", fontSize: 12, color: "#a1a1aa" }}>
+                  Searching…
+                </div>
               ) : (
                 suggestions.map((doc, i) => (
                   <button
@@ -356,13 +446,17 @@ export function WorkspaceAiAssistant({
                       e.preventDefault();
                       insertMention(doc);
                     }}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                      i === activeSuggestion
-                        ? "bg-indigo-50 text-indigo-700"
-                        : "hover:bg-slate-50 text-slate-700"
-                    }`}
+                    className="w-full flex items-center gap-2 text-left transition-colors"
+                    style={{
+                      padding: "8px 12px",
+                      fontSize: 13,
+                      background: i === activeSuggestion ? "#eef2ff" : "transparent",
+                      color: i === activeSuggestion ? "#4338ca" : "#3f3f46",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
                   >
-                    <FileText className="w-3.5 h-3.5 shrink-0" />
+                    <FileText style={{ width: 13, height: 13, flexShrink: 0 }} />
                     {doc.title}
                   </button>
                 ))
@@ -370,7 +464,7 @@ export function WorkspaceAiAssistant({
             </div>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-end">
             <textarea
               ref={inputRef}
               value={input}
@@ -379,16 +473,44 @@ export function WorkspaceAiAssistant({
               placeholder="Ask anything… type @ to reference a document"
               disabled={chatLoading}
               rows={1}
-              className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[38px] max-h-40 overflow-auto"
-              style={{ fieldSizing: "content" } as React.CSSProperties}
+              style={{
+                flex: 1,
+                resize: "none",
+                border: "1.5px solid #e4e4e7",
+                borderRadius: 10,
+                padding: "9px 12px",
+                fontSize: 13,
+                background: "#fafafa",
+                color: "#18181b",
+                outline: "none",
+                minHeight: 38,
+                maxHeight: 160,
+                overflow: "auto",
+                fontFamily: "inherit",
+                transition: "border-color 150ms",
+                fieldSizing: "content",
+              } as React.CSSProperties}
+              onFocus={(e) => {
+                (e.target as HTMLTextAreaElement).style.borderColor = "#4f46e5";
+              }}
+              onBlur={(e) => {
+                (e.target as HTMLTextAreaElement).style.borderColor = "#e4e4e7";
+              }}
             />
             <Button
               onClick={handleSubmit}
               disabled={chatLoading || !input.trim()}
-              size="sm"
-              className="bg-indigo-600 hover:bg-indigo-500 px-4 self-end"
+              className="text-white shrink-0"
+              style={{
+                background: "#4f46e5",
+                borderRadius: 8,
+                width: 38,
+                height: 38,
+                padding: 0,
+                boxShadow: "0 1px 2px rgba(79,70,229,.25)",
+              }}
             >
-              <Send className="w-4 h-4" />
+              <Send style={{ width: 15, height: 15 }} />
             </Button>
           </div>
         </div>

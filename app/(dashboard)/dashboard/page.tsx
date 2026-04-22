@@ -1,28 +1,35 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { getUserWorkspaces } from "@/lib/dal/workspace";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { Users, FileText, Clock } from "lucide-react";
+import { Users, FileText, Clock, Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { CreateWorkspaceDialog } from "@/components/workspace/create-workspace-dialog";
+
+function getRoleBadgeStyle(role: string) {
+  if (role === "OWNER")
+    return { background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe" };
+  if (role === "EDITOR")
+    return { background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7" };
+  return { background: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" };
+}
 
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
   const memberships = await getUserWorkspaces(session.user.id);
+  const firstName = session.user.name?.split(" ")[0];
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="page-animate" style={{ padding: "36px 40px" }}>
+      {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            Welcome back, {session.user.name?.split(" ")[0]}
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 4 }}>
+            Welcome back, {firstName}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
+          <p style={{ fontSize: 13, color: "#71717a" }}>
             {memberships.length} workspace{memberships.length !== 1 ? "s" : ""}
           </p>
         </div>
@@ -30,60 +37,110 @@ export default async function DashboardPage() {
       </div>
 
       {memberships.length === 0 ? (
-        <div className="text-center py-24">
-          <div className="text-5xl mb-4">🏢</div>
-          <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">
+        <div className="flex flex-col items-center justify-center py-24">
+          <div
+            className="flex items-center justify-center mb-6"
+            style={{ width: 56, height: 56, borderRadius: 16, background: "#eef2ff" }}
+          >
+            <Plus style={{ width: 24, height: 24, color: "#4f46e5" }} />
+          </div>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b", marginBottom: 8 }}>
             No workspaces yet
           </h2>
-          <p className="text-slate-500 text-sm mb-6">
+          <p style={{ fontSize: 13, color: "#71717a", marginBottom: 20 }}>
             Create your first workspace to start collaborating with your team.
           </p>
-          <CreateWorkspaceDialog trigger={<Button className="bg-indigo-600 hover:bg-indigo-500">Create workspace</Button>} />
+          <CreateWorkspaceDialog />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 stagger" style={{ gap: 14 }}>
           {memberships.map((m: typeof memberships[0]) => (
             <Link key={m.workspace.id} href={`/workspaces/${m.workspace.slug}`}>
-              <Card className="hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-base group-hover:text-indigo-600 transition-colors">
-                        {m.workspace.name}
-                      </CardTitle>
-                      <CardDescription className="text-xs mt-0.5">/{m.workspace.slug}</CardDescription>
-                    </div>
-                    <Badge
-                      variant={m.role === "OWNER" ? "default" : "secondary"}
-                      className={
-                        m.role === "OWNER"
-                          ? "bg-indigo-100 text-indigo-700 border-indigo-200"
-                          : ""
-                      }
-                    >
-                      {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
-                    </Badge>
+              <div
+                className="hover-card cursor-pointer"
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e4e4e7",
+                  borderRadius: 12,
+                  padding: "20px 20px 16px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,.04)",
+                }}
+              >
+                {/* Top row */}
+                <div className="flex items-start justify-between mb-3">
+                  <div
+                    className="flex items-center justify-center font-extrabold"
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      background: "#eef2ff",
+                      color: "#4f46e5",
+                      fontSize: 16,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {m.workspace.name[0]?.toUpperCase()}
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      {m.workspace._count.members}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <FileText className="w-3 h-3" />
-                      {m.workspace._count.documents}
-                    </span>
-                    <span className="flex items-center gap-1 ml-auto">
-                      <Clock className="w-3 h-3" />
-                      {formatDistanceToNow(m.workspace.updatedAt, { addSuffix: true })}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
+                  <span
+                    className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                    style={getRoleBadgeStyle(m.role)}
+                  >
+                    {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
+                  </span>
+                </div>
+
+                {/* Name + slug */}
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#18181b", marginBottom: 2 }}>
+                  {m.workspace.name}
+                </p>
+                <p style={{ fontSize: 11, color: "#a1a1aa", marginBottom: 14 }}>
+                  /{m.workspace.slug}
+                </p>
+
+                {/* Footer row */}
+                <div className="flex items-center gap-4" style={{ fontSize: 12, color: "#71717a" }}>
+                  <span className="flex items-center gap-1">
+                    <Users style={{ width: 12, height: 12 }} />
+                    {m.workspace._count.members}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <FileText style={{ width: 12, height: 12 }} />
+                    {m.workspace._count.documents}
+                  </span>
+                  <span className="flex items-center gap-1 ml-auto">
+                    <Clock style={{ width: 12, height: 12 }} />
+                    {formatDistanceToNow(m.workspace.updatedAt, { addSuffix: true })}
+                  </span>
+                </div>
+              </div>
             </Link>
           ))}
+
+          {/* Dashed new workspace tile — uses a div trigger to avoid button-in-button */}
+          <CreateWorkspaceDialog
+            trigger={
+              <div
+                className="new-ws-tile flex flex-col items-center justify-center cursor-pointer"
+                style={{
+                  border: "1.5px dashed #e4e4e7",
+                  borderRadius: 12,
+                  minHeight: 140,
+                  background: "#fafafa",
+                }}
+              >
+                <div
+                  className="flex items-center justify-center mb-2"
+                  style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
+                >
+                  <Plus style={{ width: 18, height: 18, color: "#4f46e5" }} />
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#71717a" }}>
+                  New workspace
+                </span>
+              </div>
+            }
+          />
         </div>
       )}
     </div>

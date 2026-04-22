@@ -20,7 +20,7 @@ export default async function DashboardLayout({
         user={{ name: session.user.name ?? "", email: session.user.email ?? "" }}
         workspaces={workspaces}
       />
-      <main className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950">{children}</main>
+      <main className="flex-1 overflow-auto" style={{ background: "#f4f4f5" }}>{children}</main>
     </div>
   );
 }

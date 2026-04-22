@@ -2,11 +2,8 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Check, X, Loader2, FileText, Clock } from "lucide-react";
+import { Check, X, Loader2, FileText, GitPullRequest } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -34,21 +31,24 @@ interface ProposalCardProps {
   workspaceId: string;
 }
 
-const STATUS_CONFIG = {
-  PENDING: { label: "Pending", className: "bg-amber-100 text-amber-700 border-amber-200" },
-  ACCEPTED: { label: "Accepted", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  REJECTED: { label: "Rejected", className: "bg-red-100 text-red-700 border-red-200" },
-  COMMITTED: { label: "Committed", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
+const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  PENDING: { bg: "#fffbeb", color: "#92400e", border: "#fde68a" },
+  ACCEPTED: { bg: "#ecfdf5", color: "#065f46", border: "#6ee7b7" },
+  REJECTED: { bg: "#fff1f2", color: "#9f1239", border: "#fecdd3" },
+  COMMITTED: { bg: "#eef2ff", color: "#4338ca", border: "#c7d2fe" },
 };
 
 export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) {
   const router = useRouter();
   const [voting, setVoting] = useState<"APPROVE" | "REJECT" | null>(null);
-  const canVote = (userRole === "OWNER" || userRole === "EDITOR") && proposal.status === "PENDING";
+  const canVote =
+    (userRole === "OWNER" || userRole === "EDITOR") && proposal.status === "PENDING";
   const myVote = proposal.votes.find((v) => v.user.id === userId);
   const approvals = proposal.votes.filter((v) => v.decision === "APPROVE").length;
   const rejections = proposal.votes.filter((v) => v.decision === "REJECT").length;
-  const statusConfig = STATUS_CONFIG[proposal.status];
+  const totalVotes = approvals + rejections;
+  const approvePct = totalVotes > 0 ? Math.round((approvals / totalVotes) * 100) : 0;
+  const statusStyle = STATUS_STYLE[proposal.status] ?? STATUS_STYLE.PENDING;
 
   async function handleVote(decision: "APPROVE" | "REJECT") {
     setVoting(decision);
@@ -77,110 +77,153 @@ export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) 
     }
   }
 
-  let patchPreview = "";
-  try {
-    const parsed = JSON.parse(proposal.patch) as { content?: string };
-    if (parsed.content) {
-      patchPreview = parsed.content.replace(/<[^>]*>/g, "").slice(0, 200);
-    }
-  } catch {
-    patchPreview = proposal.patch.slice(0, 200);
-  }
-
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-3">
-        <div className="flex items-start gap-3">
-          <Avatar className="w-8 h-8 shrink-0">
-            <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs">
-              {proposal.author.name?.[0]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium">{proposal.author.name}</span>
-              <span className="text-xs text-slate-400">proposed a change to</span>
-              <span className="text-sm font-medium text-indigo-600 flex items-center gap-1">
-                <FileText className="w-3 h-3" />
-                {proposal.document.title}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge className={`text-xs ${statusConfig.className}`}>
-                {statusConfig.label}
-              </Badge>
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}
-              </span>
-            </div>
+    <div
+      style={{
+        background: "#ffffff",
+        border: "1px solid #e4e4e7",
+        borderRadius: 12,
+        padding: "18px 20px",
+        boxShadow: "0 1px 3px rgba(0,0,0,.04)",
+      }}
+    >
+      {/* Header row */}
+      <div className="flex items-start gap-3 mb-4">
+        {/* Icon box */}
+        <div
+          className="flex items-center justify-center shrink-0"
+          style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
+        >
+          <GitPullRequest style={{ width: 16, height: 16, color: "#4f46e5" }} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {/* Title */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>
+              Change to{" "}
+              <span style={{ color: "#4f46e5" }}>{proposal.document.title}</span>
+            </p>
+            <span
+              className="rounded-full px-2.5 py-0.5 text-xs font-semibold ml-auto"
+              style={{
+                background: statusStyle.bg,
+                color: statusStyle.color,
+                border: `1px solid ${statusStyle.border}`,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {proposal.status.charAt(0) + proposal.status.slice(1).toLowerCase()}
+            </span>
+          </div>
+
+          {/* Meta row */}
+          <div className="flex items-center gap-2 flex-wrap" style={{ fontSize: 12, color: "#71717a" }}>
+            <Avatar style={{ width: 18, height: 18 }}>
+              <AvatarFallback
+                className="text-[9px] font-bold"
+                style={{ background: "#eef2ff", color: "#4338ca" }}
+              >
+                {proposal.author.name?.[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span style={{ fontWeight: 500, color: "#3f3f46" }}>{proposal.author.name}</span>
+            <span>·</span>
+            <span className="flex items-center gap-1">
+              <FileText style={{ width: 11, height: 11 }} />
+              {proposal.document.title}
+            </span>
+            <span>·</span>
+            <span>{formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}</span>
           </div>
         </div>
-      </CardHeader>
+      </div>
 
-      {patchPreview && (
-        <CardContent className="pt-0 pb-3">
-          <div className="bg-slate-50 dark:bg-slate-900 rounded-md p-3 text-xs text-slate-600 dark:text-slate-400 font-mono line-clamp-3">
-            {patchPreview}
-            {patchPreview.length >= 200 && "..."}
-          </div>
-        </CardContent>
-      )}
+      {/* Vote bar */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1.5" style={{ fontSize: 11, color: "#71717a" }}>
+          <span className="flex items-center gap-1">
+            <Check style={{ width: 11, height: 11, color: "#059669" }} />
+            {approvals} approve
+          </span>
+          <span className="flex items-center gap-1">
+            {rejections} reject
+            <X style={{ width: 11, height: 11, color: "#e11d48" }} />
+          </span>
+        </div>
+        <div
+          style={{
+            height: 5,
+            borderRadius: 99,
+            background: "#f4f4f5",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${approvePct}%`,
+              background: "#059669",
+              borderRadius: 99,
+              transition: "width 300ms ease",
+            }}
+          />
+        </div>
+      </div>
 
-      <Separator />
-
-      <CardContent className="pt-3 pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span className="flex items-center gap-1">
-              <Check className="w-3 h-3 text-emerald-500" />
-              {approvals} approve
+      {/* Action buttons */}
+      {canVote && (
+        <div className="flex items-center gap-2 justify-end">
+          {myVote && (
+            <span style={{ fontSize: 12, color: "#a1a1aa" }}>
+              You voted: {myVote.decision === "APPROVE" ? "✓ Approve" : "✗ Reject"}
             </span>
-            <span className="flex items-center gap-1">
-              <X className="w-3 h-3 text-red-500" />
-              {rejections} reject
-            </span>
-          </div>
-
-          {canVote && (
-            <div className="flex items-center gap-2">
-              {myVote && (
-                <span className="text-xs text-slate-400">
-                  You voted: {myVote.decision === "APPROVE" ? "✓ Approve" : "✗ Reject"}
-                </span>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                disabled={!!voting}
-                onClick={() => handleVote("APPROVE")}
-              >
-                {voting === "APPROVE" ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Check className="w-3 h-3" />
-                )}
-                Approve
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50"
-                disabled={!!voting}
-                onClick={() => handleVote("REJECT")}
-              >
-                {voting === "REJECT" ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <X className="w-3 h-3" />
-                )}
-                Reject
-              </Button>
-            </div>
           )}
+          <Button
+            size="sm"
+            disabled={!!voting}
+            onClick={() => handleVote("APPROVE")}
+            className="font-semibold text-white"
+            style={{
+              background: "#059669",
+              borderRadius: 8,
+              fontSize: 12,
+              height: 30,
+              paddingLeft: 12,
+              paddingRight: 12,
+            }}
+          >
+            {voting === "APPROVE" ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Check className="w-3 h-3 mr-1" />
+            )}
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!voting}
+            onClick={() => handleVote("REJECT")}
+            style={{
+              borderRadius: 8,
+              fontSize: 12,
+              height: 30,
+              paddingLeft: 12,
+              paddingRight: 12,
+              color: "#71717a",
+              borderColor: "#e4e4e7",
+            }}
+          >
+            {voting === "REJECT" ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <X className="w-3 h-3 mr-1" />
+            )}
+            Reject
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }

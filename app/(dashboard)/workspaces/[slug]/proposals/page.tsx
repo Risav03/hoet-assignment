@@ -3,13 +3,14 @@ import { redirect, notFound } from "next/navigation";
 import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { getWorkspaceProposals } from "@/lib/dal/proposal";
 import { ProposalCard } from "@/components/proposals/proposal-card";
-import { Badge } from "@/components/ui/badge";
 import { GitPullRequest } from "lucide-react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ status?: string }>;
 }
+
+const TABS = ["PENDING", "COMMITTED", "REJECTED"] as const;
 
 export default async function ProposalsPage({ params, searchParams }: PageProps) {
   const session = await auth();
@@ -28,46 +29,66 @@ export default async function ProposalsPage({ params, searchParams }: PageProps)
     status: status as "PENDING" | "COMMITTED" | "REJECTED" | undefined,
   });
 
-  const tabs = ["PENDING", "COMMITTED", "REJECTED"] as const;
+  const activeTab = (TABS.find((t) => t === status) ?? "PENDING") as typeof TABS[number];
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="page-animate" style={{ padding: "36px 40px" }}>
+      {/* Page header */}
       <div className="flex items-center gap-3 mb-6">
-        <GitPullRequest className="w-6 h-6 text-slate-400" />
+        <div
+          className="flex items-center justify-center"
+          style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
+        >
+          <GitPullRequest style={{ width: 17, height: 17, color: "#4f46e5" }} />
+        </div>
         <div>
-          <h1 className="text-2xl font-bold">Proposals</h1>
-          <p className="text-slate-500 text-sm">{workspace.name}</p>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 2 }}>
+            Proposals
+          </h1>
+          <p style={{ fontSize: 13, color: "#71717a" }}>{workspace.name}</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-6">
-        {tabs.map((tab) => (
-          <a key={tab} href={`?status=${tab}`}>
-            <Badge
-              className={`cursor-pointer ${
-                (status ?? "PENDING") === tab
-                  ? "bg-indigo-100 text-indigo-700 border-indigo-200"
-                  : "bg-transparent text-slate-500 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {tab.charAt(0) + tab.slice(1).toLowerCase()}
-            </Badge>
-          </a>
-        ))}
+      {/* Segmented status tabs */}
+      <div className="flex items-center mb-6">
+        <div
+          className="flex items-center p-1 gap-1"
+          style={{ background: "#f4f4f5", borderRadius: 8 }}
+        >
+          {TABS.map((tab) => (
+            <a key={tab} href={`?status=${tab}`}>
+              <span
+                className="block cursor-pointer transition-all font-semibold"
+                style={{
+                  padding: "4px 14px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  background: activeTab === tab ? "#ffffff" : "transparent",
+                  color: activeTab === tab ? "#18181b" : "#71717a",
+                  boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,.08)" : "none",
+                }}
+              >
+                {tab.charAt(0) + tab.slice(1).toLowerCase()}
+              </span>
+            </a>
+          ))}
+        </div>
       </div>
 
       {proposals.length === 0 ? (
-        <div className="text-center py-16">
-          <GitPullRequest className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-          <h3 className="font-medium text-slate-600 mb-1">No proposals</h3>
-          <p className="text-sm text-slate-400">
-            {status === "PENDING"
+        <div className="flex flex-col items-center justify-center py-16">
+          <GitPullRequest style={{ width: 40, height: 40, color: "#d4d4d8", marginBottom: 12 }} />
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#3f3f46", marginBottom: 6 }}>
+            No proposals
+          </h3>
+          <p style={{ fontSize: 13, color: "#a1a1aa" }}>
+            {activeTab === "PENDING"
               ? "No pending proposals. Editors can propose changes from the document editor."
-              : `No ${status?.toLowerCase()} proposals yet.`}
+              : `No ${activeTab.toLowerCase()} proposals yet.`}
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3 stagger">
           {proposals.map((proposal: typeof proposals[0]) => (
             <ProposalCard
               key={proposal.id}

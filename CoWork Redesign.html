@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CoWork — Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: #f4f4f5;
+    color: #18181b;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Demo nav */
+  .demo-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: #18181b;
+    display: flex; align-items: center; gap: 0; overflow-x: auto;
+    padding: 0 12px;
+    height: 38px;
+    scrollbar-width: none;
+  }
+  .demo-nav::-webkit-scrollbar { display: none; }
+  .demo-nav-label {
+    color: #71717a; font-size: 11px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase;
+    padding-right: 12px; border-right: 1px solid #3f3f46;
+    margin-right: 8px; white-space: nowrap; flex-shrink: 0;
+  }
+  .demo-btn {
+    background: none; border: none; cursor: pointer;
+    color: #a1a1aa; font-family: inherit; font-size: 11px; font-weight: 500;
+    padding: 0 10px; height: 38px; white-space: nowrap; flex-shrink: 0;
+    transition: color .15s;
+    border-bottom: 2px solid transparent;
+  }
+  .demo-btn:hover { color: #fff; }
+  .demo-btn.active { color: #818cf8; border-bottom-color: #818cf8; }
+
+  .page-wrapper { padding-top: 38px; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+  .page-content { flex: 1; overflow: auto; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 99px; }
+
+  /* Page transitions */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .page-animate { animation: fadeUp .22s cubic-bezier(.22,1,.36,1) both; }
+  .fade-animate { animation: fadeIn .18s ease both; }
+  .slide-animate { animation: slideInLeft .2s cubic-bezier(.22,1,.36,1) both; }
+
+  /* Staggered children */
+  .stagger > * { animation: fadeUp .22s cubic-bezier(.22,1,.36,1) both; }
+  .stagger > *:nth-child(1)  { animation-delay: .03s; }
+  .stagger > *:nth-child(2)  { animation-delay: .06s; }
+  .stagger > *:nth-child(3)  { animation-delay: .09s; }
+  .stagger > *:nth-child(4)  { animation-delay: .12s; }
+  .stagger > *:nth-child(5)  { animation-delay: .15s; }
+  .stagger > *:nth-child(6)  { animation-delay: .18s; }
+  .stagger > *:nth-child(7)  { animation-delay: .21s; }
+  .stagger > *:nth-child(8)  { animation-delay: .24s; }
+
+  /* Activity timeline */
+  .activity-item { animation: slideInLeft .2s cubic-bezier(.22,1,.36,1) both; }
+  .activity-item:nth-child(1)  { animation-delay: .04s; }
+  .activity-item:nth-child(2)  { animation-delay: .08s; }
+  .activity-item:nth-child(3)  { animation-delay: .12s; }
+  .activity-item:nth-child(4)  { animation-delay: .16s; }
+  .activity-item:nth-child(5)  { animation-delay: .20s; }
+  .activity-item:nth-child(6)  { animation-delay: .24s; }
+  .activity-item:nth-child(7)  { animation-delay: .28s; }
+  .activity-item:nth-child(8)  { animation-delay: .32s; }
+
+  /* Tweak panel */
+  .tweak-panel {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9998;
+    background: #fff; border: 1px solid #e4e4e7; border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+    padding: 18px 20px; width: 240px;
+    display: none;
+  }
+  .tweak-panel.visible { display: block; }
+  .tweak-title { font-size: 12px; font-weight: 700; color: #18181b; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 14px; }
+  .tweak-row { margin-bottom: 12px; }
+  .tweak-row label { font-size: 11px; font-weight: 600; color: #71717a; display: block; margin-bottom: 5px; }
+  .tweak-row select, .tweak-row input[type=range] { width: 100%; font-family: inherit; }
+  .tweak-row select { font-size: 12px; border: 1px solid #e4e4e7; border-radius: 6px; padding: 5px 8px; color: #18181b; background: #fff; }
+  .tweak-row input[type=range] { accent-color: #4f46e5; }
+  .tweak-swatch-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tweak-swatch { width: 22px; height: 22px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; }
+  .tweak-swatch.selected { border-color: #18181b; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#4f46e5",
+  "sidebarStyle": "dark",
+  "density": "default",
+  "landingStyle": "dark"
+}/*EDITMODE-END*/;
+
+// ─── Tokens ──────────────────────────────────────────────────────────────────
+const T = {
+  indigo:  { bg: '#4f46e5', light: '#eef2ff', text: '#4338ca', muted: '#818cf8' },
+  emerald: { bg: '#059669', light: '#ecfdf5', text: '#065f46', muted: '#34d399' },
+  rose:    { bg: '#e11d48', light: '#fff1f2', text: '#9f1239', muted: '#fb7185' },
+  amber:   { bg: '#d97706', light: '#fffbeb', text: '#92400e', muted: '#fbbf24' },
+};
+
+// ─── Icons (inline SVG) ───────────────────────────────────────────────────────
+const Icon = ({ name, size = 16, color = 'currentColor', style = {} }) => {
+  const paths = {
+    dashboard:   'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10',
+    folder:      'M3 7a2 2 0 012-2h4l2 2h7a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z',
+    git:         'M18 3a3 3 0 00-3 3v.268A3 3 0 0013 9a3 3 0 001.268 2.452 2.001 2.001 0 01-.268.048H12a3 3 0 00-3-3V3a3 3 0 00-6 0v3a3 3 0 003 3h.268A3.001 3.001 0 009 12v.268A3 3 0 008 15a3 3 0 003 3 3 3 0 003-3 3 3 0 00-1-2.268V12a1 1 0 011-1h2a3.98 3.98 0 001.268-.268A3 3 0 0018 12a3 3 0 003-3 3 3 0 00-3-3zM6 6a1 1 0 112 0 1 1 0 01-2 0zm5 9a1 1 0 112 0 1 1 0 01-2 0zm7-6a1 1 0 112 0 1 1 0 01-2 0z',
+    users:       'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75 M9 11a4 4 0 100-8 4 4 0 000 8z',
+    activity:    'M22 12h-4l-3 9L9 3l-3 9H2',
+    bot:         'M12 2a2 2 0 012 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 017 7H3a7 7 0 017-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 012-2zM5 14v4a7 7 0 0014 0v-4H5zm4 2h2v2H9v-2zm4 0h2v2h-2v-2z',
+    settings:    'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+    logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4 M16 17l5-5-5-5 M21 12H9',
+    building:    'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z M9 22V12h6v10',
+    chevron:     'M6 9l6 6 6-6',
+    plus:        'M12 5v14M5 12h14',
+    clock:       'M12 22a10 10 0 100-20 10 10 0 000 20z M12 6v6l4 2',
+    file:        'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6',
+    tag:         'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z M7 7h.01',
+    check:       'M20 6L9 17l-5-5',
+    x:           'M18 6L6 18M6 6l12 12',
+    send:        'M22 2L11 13 M22 2L15 22l-4-9-9-4 22-7z',
+    sparkle:     'M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z M19 17l.75 2.25L22 20l-2.25.75L19 23l-.75-2.25L16 20l2.25-.75z M5 3l.75 2.25L8 6l-2.25.75L5 9l-.75-2.25L2 6l2.25-.75z',
+    eye:         'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z',
+    shield:      'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+    zap:         'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+    globe:       'M12 22a10 10 0 100-20 10 10 0 000 20z M2 12h20 M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z',
+    arrowRight:  'M5 12h14M12 5l7 7-7 7',
+    search:      'M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z',
+    more:        'M12 13a1 1 0 100-2 1 1 0 000 2zM19 13a1 1 0 100-2 1 1 0 000 2zM5 13a1 1 0 100-2 1 1 0 000 2z',
+    edit:        'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7 M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+    history:     'M3 3v5h5 M3.05 13A9 9 0 106 5.3L3 8',
+    chevronR:    'M9 18l6-6-6-6',
+    online:      'M5 12.55a11 11 0 0114.08 0 M1.42 9a16 16 0 0121.16 0 M8.53 16.11a6 6 0 016.95 0 M12 20h.01',
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0, ...style }}>
+      {paths[name]?.split(' M').map((d, i) => (
+        <path key={i} d={i === 0 ? d : 'M' + d} />
+      ))}
+    </svg>
+  );
+};
+
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+const Avatar = ({ name, size = 32, color = '#4f46e5' }) => {
+  const initials = name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'U';
+  const bg = { '#4f46e5': '#eef2ff', '#059669': '#ecfdf5', '#d97706': '#fffbeb' }[color] || '#eef2ff';
+  const fg = { '#4f46e5': '#4338ca', '#059669': '#065f46', '#d97706': '#92400e' }[color] || '#4338ca';
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', background: bg, color: fg,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: size * 0.35, fontWeight: 700, flexShrink: 0 }}>
+      {initials}
+    </div>
+  );
+};
+
+// ─── Badge ────────────────────────────────────────────────────────────────────
+const Badge = ({ children, color = 'zinc', dot = false }) => {
+  const colors = {
+    indigo: { bg: '#eef2ff', text: '#4338ca' },
+    emerald: { bg: '#ecfdf5', text: '#065f46' },
+    rose: { bg: '#fff1f2', text: '#9f1239' },
+    amber: { bg: '#fffbeb', text: '#92400e' },
+    zinc: { bg: '#f4f4f5', text: '#52525b' },
+    violet: { bg: '#f5f3ff', text: '#5b21b6' },
+  };
+  const c = colors[color] || colors.zinc;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: c.bg, color: c.text, fontSize: 11, fontWeight: 600,
+      padding: '3px 8px', borderRadius: 99, letterSpacing: '.02em', whiteSpace: 'nowrap' }}>
+      {dot && <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.text }} />}
+      {children}
+    </span>
+  );
+};
+
+// ─── Button ───────────────────────────────────────────────────────────────────
+const Btn = ({ children, variant = 'primary', size = 'md', onClick, style = {}, disabled = false, accent = '#4f46e5' }) => {
+  const [hov, setHov] = React.useState(false);
+  const base = {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    fontFamily: 'inherit', fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
+    border: 'none', borderRadius: 8, transition: 'all .15s', whiteSpace: 'nowrap',
+    fontSize: size === 'sm' ? 12 : size === 'lg' ? 14 : 13,
+    padding: size === 'sm' ? '6px 12px' : size === 'lg' ? '11px 22px' : '8px 16px',
+    opacity: disabled ? .55 : 1,
+  };
+  const styles = {
+    primary: { background: hov ? '#4338ca' : accent, color: '#fff', boxShadow: '0 1px 2px rgba(79,70,229,.25)' },
+    secondary: { background: hov ? '#f4f4f5' : '#fff', color: '#18181b', border: '1px solid #e4e4e7' },
+    ghost: { background: hov ? '#f4f4f5' : 'transparent', color: '#52525b', border: 'none' },
+    danger: { background: hov ? '#be123c' : '#e11d48', color: '#fff' },
+  };
+  return (
+    <button style={{ ...base, ...styles[variant], ...style }}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  );
+};
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+const Input = ({ placeholder, type = 'text', label, icon, value, onChange, style = {} }) => {
+  const [focus, setFocus] = React.useState(false);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, ...style }}>
+      {label && <label style={{ fontSize: 12, fontWeight: 600, color: '#3f3f46' }}>{label}</label>}
+      <div style={{ position: 'relative' }}>
+        {icon && <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#a1a1aa', pointerEvents: 'none' }}>
+          <Icon name={icon} size={14} />
+        </span>}
+        <input type={type} placeholder={placeholder} value={value} onChange={onChange}
+          onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+          style={{ width: '100%', fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
+            border: `1.5px solid ${focus ? '#4f46e5' : '#e4e4e7'}`,
+            borderRadius: 8, padding: icon ? '9px 12px 9px 32px' : '9px 12px',
+            outline: 'none', color: '#18181b', background: '#fff',
+            boxShadow: focus ? '0 0 0 3px rgba(79,70,229,.1)' : 'none',
+            transition: 'all .15s' }} />
+      </div>
+    </div>
+  );
+};
+
+// ─── Card ─────────────────────────────────────────────────────────────────────
+const Card = ({ children, style = {}, onClick, hover = false }) => {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div onClick={onClick}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ background: '#fff', border: `1px solid ${hov && hover ? '#c7d2fe' : '#e4e4e7'}`,
+        borderRadius: 12, transition: 'all .15s',
+        boxShadow: hov && hover ? '0 4px 16px rgba(79,70,229,.08)' : '0 1px 3px rgba(0,0,0,.04)',
+        cursor: onClick ? 'pointer' : 'default', ...style }}>
+      {children}
+    </div>
+  );
+};
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+const Sidebar = ({ page, setPage, tweaks }) => {
+  const accent = tweaks.accentColor;
+  const isDark = tweaks.sidebarStyle === 'dark';
+  const bg = isDark ? '#18181b' : '#fff';
+  const border = isDark ? '#27272a' : '#e4e4e7';
+  const textMuted = isDark ? '#71717a' : '#a1a1aa';
+  const textNormal = isDark ? '#a1a1aa' : '#71717a';
+  const textActive = isDark ? '#fff' : '#18181b';
+  const activeBg = isDark ? '#27272a' : '#f4f4f5';
+
+  const global = [
+    { id: 'dashboard', icon: 'dashboard', label: 'Dashboard' },
+  ];
+  const workspace = [
+    { id: 'documents', icon: 'folder', label: 'Documents' },
+    { id: 'ai-assistant', icon: 'bot', label: 'AI Assistant' },
+    { id: 'proposals', icon: 'git', label: 'Proposals' },
+    { id: 'members', icon: 'users', label: 'Members' },
+    { id: 'activity', icon: 'activity', label: 'Activity' },
+    { id: 'settings', icon: 'settings', label: 'Settings' },
+  ];
+
+  const NavItem = ({ item }) => {
+    const isActive = page === item.id;
+    const [hov, setHov] = React.useState(false);
+    return (
+      <div onClick={() => setPage(item.id)}
+        onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+        style={{ display: 'flex', alignItems: 'center', gap: 9,
+          padding: '7px 10px', borderRadius: 8, cursor: 'pointer',
+          background: isActive ? activeBg : hov ? (isDark ? '#27272a' : '#f9f9f9') : 'transparent',
+          color: isActive ? textActive : hov ? (isDark ? '#d4d4d8' : '#3f3f46') : textNormal,
+          borderLeft: isActive ? `2.5px solid ${accent}` : '2.5px solid transparent',
+          transition: 'all .12s', marginBottom: 1 }}>
+        <Icon name={item.icon} size={15} color={isActive ? accent : 'currentColor'} />
+        <span style={{ fontSize: 13, fontWeight: isActive ? 600 : 500 }}>{item.label}</span>
+      </div>
+    );
+  };
+
+  return (
+    <aside style={{ width: 220, background: bg, borderRight: `1px solid ${border}`,
+      display: 'flex', flexDirection: 'column', height: '100%', flexShrink: 0 }}>
+      {/* Logo */}
+      <div style={{ padding: '16px 16px 14px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: accent,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>C</span>
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#fff' : '#18181b' }}>CoWork</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'block', boxShadow: '0 0 0 2px rgba(34,197,94,.25)' }} />
+        </div>
+      </div>
+
+      {/* Workspace switcher */}
+      <div style={{ padding: '10px 10px 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+          border: `1px solid ${border}`, borderRadius: 8, cursor: 'pointer', background: isDark ? '#27272a' : '#fafafa' }}>
+          <Icon name="building" size={13} color={textMuted} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: isDark ? '#d4d4d8' : '#3f3f46', flex: 1, truncate: true }}>Design Team</span>
+          <Icon name="chevron" size={12} color={textMuted} />
+        </div>
+      </div>
+
+      {/* Nav */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
+        {global.map(item => <NavItem key={item.id} item={item} />)}
+        <div style={{ marginTop: 16, marginBottom: 6, padding: '0 10px' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: textMuted, textTransform: 'uppercase', letterSpacing: '.08em' }}>Workspace</span>
+        </div>
+        {workspace.map(item => <NavItem key={item.id} item={item} />)}
+      </div>
+
+      {/* User */}
+      <div style={{ padding: '10px 10px 14px', borderTop: `1px solid ${border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px',
+          borderRadius: 8, cursor: 'pointer' }}>
+          <Avatar name="Jane Doe" size={28} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: isDark ? '#d4d4d8' : '#18181b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Jane Doe</div>
+            <div style={{ fontSize: 11, color: textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>jane@example.com</div>
+          </div>
+          <Icon name="chevron" size={12} color={textMuted} />
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+// ─── LANDING PAGE ─────────────────────────────────────────────────────────────
+const LandingPage = ({ setPage, tweaks }) => {
+  const isLight = tweaks.landingStyle === 'light';
+  const bg = isLight ? '#fff' : '#09090b';
+  const fg = isLight ? '#18181b' : '#fafafa';
+  const fgMuted = isLight ? '#71717a' : '#71717a';
+  const cardBg = isLight ? '#fafafa' : '#18181b';
+  const cardBorder = isLight ? '#e4e4e7' : '#27272a';
+  const accent = tweaks.accentColor;
+
+  const features = [
+    { icon: 'zap', title: 'Local-first editing', desc: 'Documents live in IndexedDB. Edit offline, sync when you reconnect.' },
+    { icon: 'git', title: 'Proposal-based changes', desc: 'All edits become proposals. Owners and editors vote. Only approved changes commit.' },
+    { icon: 'globe', title: 'Real-time updates', desc: 'Server-Sent Events push updates to all connected collaborators instantly.' },
+    { icon: 'history', title: 'Version history', desc: 'Every committed proposal creates an immutable version. Travel back safely.' },
+    { icon: 'sparkle', title: 'AI assistant', desc: 'Summarize documents, extract action items, rewrite content, explain conflicts.' },
+    { icon: 'shield', title: 'Role-based access', desc: 'Owners, Editors, and Viewers. Every action is permission-checked server-side.' },
+  ];
+
+  return (
+    <div style={{ minHeight: '100%', background: bg, color: fg }}>
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 48px', height: 60, borderBottom: `1px solid ${cardBorder}`,
+        position: 'sticky', top: 0, background: bg, zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>C</span>
+          </div>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>CoWork</span>
+        </div>
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Btn variant="ghost" onClick={() => setPage('login')} style={{ color: fgMuted }}>Sign in</Btn>
+          <Btn variant="primary" onClick={() => setPage('signup')} accent={accent}>Get started</Btn>
+        </nav>
+      </header>
+
+      {/* Hero */}
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: '96px 32px 80px', textAlign: 'center' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: isLight ? '#eef2ff' : '#1e1b4b', color: isLight ? '#4338ca' : '#818cf8',
+          fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 99, marginBottom: 32,
+          border: `1px solid ${isLight ? '#c7d2fe' : '#312e81'}` }}>
+          <Icon name="zap" size={12} />
+          Local-first · Offline-capable · Real-time
+        </span>
+        <h1 style={{ fontSize: 60, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-2px', marginBottom: 24 }}>
+          Collaborate without<br />
+          <span style={{ color: accent }}>compromising</span>
+        </h1>
+        <p style={{ fontSize: 17, lineHeight: 1.7, color: fgMuted, maxWidth: 520, margin: '0 auto 40px' }}>
+          A team workspace that lets you edit offline, propose changes, vote on updates, and sync safely — powered by proposal-based conflict resolution.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <Btn variant="primary" size="lg" onClick={() => setPage('signup')} accent={accent}>
+            Start for free <Icon name="arrowRight" size={14} />
+          </Btn>
+          <Btn variant="secondary" size="lg" onClick={() => setPage('login')}>Sign in</Btn>
+        </div>
+      </div>
+
+      {/* Features */}
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '0 32px 96px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+          {features.map(f => (
+            <div key={f.title} style={{ background: cardBg, border: `1px solid ${cardBorder}`,
+              borderRadius: 14, padding: '24px 22px' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10,
+                background: isLight ? '#eef2ff' : '#1e1b4b', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+                <Icon name={f.icon} size={17} color={isLight ? accent : '#818cf8'} />
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{f.title}</div>
+              <div style={{ fontSize: 13, color: fgMuted, lineHeight: 1.65 }}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <footer style={{ borderTop: `1px solid ${cardBorder}`, padding: '24px 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 12, color: fgMuted }}>© 2025 CoWork. Built with Next.js · Prisma · Auth.js</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {['Privacy', 'Terms', 'Docs'].map(l => (
+            <span key={l} style={{ fontSize: 12, color: fgMuted, cursor: 'pointer' }}>{l}</span>
+          ))}
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+// ─── AUTH PAGES ───────────────────────────────────────────────────────────────
+const AuthPage = ({ mode, setPage, tweaks }) => {
+  const accent = tweaks.accentColor;
+  const isLogin = mode === 'login';
+  return (
+    <div style={{ minHeight: '100%', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: accent,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <span style={{ color: '#fff', fontSize: 18, fontWeight: 800 }}>C</span>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 6 }}>
+            {isLogin ? 'Welcome back' : 'Create an account'}
+          </div>
+          <div style={{ fontSize: 13, color: '#71717a' }}>
+            {isLogin ? 'Sign in to your CoWork account' : 'Start collaborating with your team'}
+          </div>
+        </div>
+
+        {/* Form card */}
+        <Card style={{ padding: 28 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {!isLogin && <Input label="Full name" placeholder="Jane Doe" />}
+            <Input label="Email" type="email" placeholder="you@example.com" />
+            <Input label="Password" type="password" placeholder="••••••••" />
+          </div>
+          <Btn variant="primary" size="lg" style={{ width: '100%', marginTop: 20, justifyContent: 'center' }} accent={accent}>
+            {isLogin ? 'Sign in' : 'Create account'}
+          </Btn>
+          <p style={{ textAlign: 'center', fontSize: 12, color: '#71717a', marginTop: 16 }}>
+            {isLogin ? "Don't have an account? " : 'Already have an account? '}
+            <span style={{ color: accent, fontWeight: 600, cursor: 'pointer' }}
+              onClick={() => setPage(isLogin ? 'signup' : 'login')}>
+              {isLogin ? 'Sign up' : 'Sign in'}
+            </span>
+          </p>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// ─── DASHBOARD PAGE ───────────────────────────────────────────────────────────
+const DashboardPage = ({ setPage, tweaks }) => {
+  const accent = tweaks.accentColor;
+  const workspaces = [
+    { name: 'Design Team', slug: 'design-team', role: 'OWNER', members: 8, docs: 24, updated: '2 hours ago' },
+    { name: 'Engineering', slug: 'engineering', role: 'EDITOR', members: 12, docs: 47, updated: '5 hours ago' },
+    { name: 'Marketing', slug: 'marketing', role: 'VIEWER', members: 5, docs: 11, updated: '1 day ago' },
+    { name: 'Product Q2', slug: 'product-q2', role: 'EDITOR', members: 7, docs: 19, updated: '3 days ago' },
+    { name: 'Ops & Finance', slug: 'ops-finance', role: 'VIEWER', members: 4, docs: 8, updated: '1 week ago' },
+  ];
+  const roleColor = { OWNER: 'indigo', EDITOR: 'emerald', VIEWER: 'zinc' };
+  return (
+    <div className="page-animate" style={{ padding: '36px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 4 }}>Welcome back, Jane</div>
+          <div style={{ fontSize: 13, color: '#71717a' }}>{workspaces.length} workspaces</div>
+        </div>
+        <Btn variant="primary" accent={accent}>
+          <Icon name="plus" size={14} /> New workspace
+        </Btn>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+        {workspaces.map(ws => (
+          <Card key={ws.slug} hover onClick={() => setPage('documents')} style={{ padding: '20px 22px', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 16, fontWeight: 800, color: accent }}>{ws.name[0]}</span>
+              </div>
+              <Badge color={roleColor[ws.role]}>{ws.role.charAt(0)+ws.role.slice(1).toLowerCase()}</Badge>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', marginBottom: 3 }}>{ws.name}</div>
+            <div style={{ fontSize: 11, color: '#a1a1aa', marginBottom: 14 }}>/{ws.slug}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: '#71717a' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="users" size={12} /> {ws.members}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="file" size={12} /> {ws.docs}
+              </span>
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="clock" size={12} /> {ws.updated}
+              </span>
+            </div>
+          </Card>
+        ))}
+
+        {/* New workspace card */}
+        <Card hover style={{ padding: '20px 22px', cursor: 'pointer', border: '1.5px dashed #e4e4e7', background: '#fafafa' }}>
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 120 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="plus" size={16} color="#a1a1aa" />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#a1a1aa' }}>New workspace</span>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// ─── DOCUMENTS PAGE ───────────────────────────────────────────────────────────
+const DocumentsPage = ({ setPage, tweaks }) => {
+  const accent = tweaks.accentColor;
+  const [tab, setTab] = React.useState('active');
+  const docs = [
+    { id: 1, title: 'Q2 Product Roadmap', tags: ['strategy', 'product'], updated: '2h ago', versions: 8 },
+    { id: 2, title: 'Design System Guidelines', tags: ['design', 'reference'], updated: '5h ago', versions: 14 },
+    { id: 3, title: 'Engineering Onboarding', tags: ['engineering', 'hr'], updated: '1d ago', versions: 3 },
+    { id: 4, title: 'API Documentation v2', tags: ['api', 'dev'], updated: '2d ago', versions: 22 },
+    { id: 5, title: 'Brand Voice & Tone', tags: ['marketing'], updated: '3d ago', versions: 5 },
+    { id: 6, title: 'Sprint Retrospective — May', tags: ['team'], updated: '1w ago', versions: 2 },
+  ];
+  return (
+    <div className="page-animate" style={{ padding: '36px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 4 }}>Documents</div>
+          <div style={{ fontSize: 13, color: '#71717a' }}>Design Team</div>
+        </div>
+        <Btn variant="primary" accent={accent}><Icon name="plus" size={14} /> New document</Btn>
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+        <Input placeholder="Search documents…" icon="search" style={{ maxWidth: 260 }} />
+        <div style={{ display: 'flex', background: '#f4f4f5', borderRadius: 8, padding: 3, gap: 2 }}>
+          {['active', 'archived'].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '5px 14px', borderRadius: 6,
+              border: 'none', cursor: 'pointer', transition: 'all .15s',
+              background: tab === t ? '#fff' : 'transparent',
+              color: tab === t ? '#18181b' : '#71717a',
+              boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+            }}>
+              {t.charAt(0).toUpperCase()+t.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="stagger" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+        {docs.map(doc => (
+          <Card key={doc.id} hover onClick={() => setPage('editor')} style={{ padding: '18px 20px', cursor: 'pointer' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#eef2ff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Icon name="file" size={15} color={accent} />
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#18181b', marginBottom: 8, lineHeight: 1.4 }}>{doc.title}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+              {doc.tags.map(t => <Badge key={t} color="zinc">{t}</Badge>)}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', fontSize: 11, color: '#a1a1aa', gap: 8 }}>
+              <Icon name="clock" size={11} />
+              <span>{doc.updated}</span>
+              <span style={{ marginLeft: 'auto' }}>{doc.versions} versions</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── DOCUMENT EDITOR ──────────────────────────────────────────────────────────
+const EditorPage = ({ setPage, tweaks }) => {
+  const accent = tweaks.accentColor;
+  const [content, setContent] = React.useState('## Introduction\n\nThis document outlines the Q2 product roadmap for our team. Our focus areas this quarter are...\n\n## Goals\n\n1. Launch the redesigned onboarding flow\n2. Ship the API v2 with full documentation\n3. Reach 10k active users by end of June\n\n## Milestones\n\n**April:** Design reviews and prototypes\n**May:** Engineering handoff and build\n**June:** QA, beta, and launch');
+  const [tab, setTab] = React.useState('edit');
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Editor header */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e4e4e7', padding: '0 24px',
+        display: 'flex', alignItems: 'center', gap: 12, height: 52, flexShrink: 0 }}>
+        <button onClick={() => setPage('documents')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#71717a', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+          <Icon name="chevron" size={14} style={{ transform: 'rotate(90deg)' }} /> Documents
+        </button>
+        <span style={{ color: '#d4d4d8' }}>/</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#18181b' }}>Q2 Product Roadmap</span>
+        <div style={{ display: 'flex', background: '#f4f4f5', borderRadius: 8, padding: 3, gap: 2, marginLeft: 'auto' }}>
+          {['edit', 'preview', 'history'].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 6,
+              border: 'none', cursor: 'pointer',
+              background: tab === t ? '#fff' : 'transparent',
+              color: tab === t ? '#18181b' : '#71717a',
+              boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+            }}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Badge color="amber" dot>Draft</Badge>
+          <Btn variant="primary" size="sm" accent={accent}><Icon name="git" size={12} /> Propose</Btn>
+        </div>
+      </div>
+
+      {/* Editor body */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Main editor */}
+        <div style={{ flex: 1, padding: '40px 60px', overflowY: 'auto', background: '#fff' }}>
+          <input defaultValue="Q2 Product Roadmap" style={{
+            width: '100%', fontFamily: 'inherit', fontSize: 28, fontWeight: 800, color: '#18181b',
+            border: 'none', outline: 'none', marginBottom: 24, background: 'transparent'
+          }} />
+          {tab === 'edit' ? (
+            <textarea value={content} onChange={e => setContent(e.target.value)}
+              style={{ width: '100%', minHeight: 380, fontFamily: 'inherit', fontSize: 14, lineHeight: 1.75,
+                color: '#3f3f46', border: 'none', outline: 'none', resize: 'none', background: 'transparent' }} />
+          ) : tab === 'preview' ? (
+            <div style={{ fontSize: 14, lineHeight: 1.8, color: '#3f3f46' }}>
+              {content.split('\n').map((line, i) => {
+                if (line.startsWith('## ')) return <h2 key={i} style={{ fontSize: 18, fontWeight: 700, color: '#18181b', marginTop: 24, marginBottom: 10 }}>{line.slice(3)}</h2>;
+                if (line.startsWith('**')) return <p key={i} style={{ fontWeight: 700, color: '#18181b', marginBottom: 4 }}>{line.replace(/\*\*/g, '')}</p>;
+                if (line.match(/^\d+\./)) return <p key={i} style={{ marginBottom: 6, paddingLeft: 16 }}>{line}</p>;
+                return line ? <p key={i} style={{ marginBottom: 8 }}>{line}</p> : <br key={i} />;
+              })}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { v: 'v8', label: 'Current', date: '2h ago', by: 'Jane Doe' },
+                { v: 'v7', label: '', date: '1d ago', by: 'Alex Kim' },
+                { v: 'v6', label: '', date: '3d ago', by: 'Jane Doe' },
+              ].map(item => (
+                <div key={item.v} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', border: '1px solid #e4e4e7', borderRadius: 10, background: item.label ? '#fafafa' : '#fff' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#52525b', width: 28 }}>{item.v}</div>
+                  <Avatar name={item.by} size={26} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#18181b' }}>{item.by}</div>
+                    <div style={{ fontSize: 11, color: '#a1a1aa' }}>{item.date}</div>
+                  </div>
+                  {item.label && <Badge color="indigo">{item.label}</Badge>}
+                  {!item.label && <Btn variant="ghost" size="sm">Restore</Btn>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right panel */}
+        <div style={{ width: 240, borderLeft: '1px solid #e4e4e7', padding: 20, overflowY: 'auto', background: '#fafafa', flexShrink: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 14 }}>Details</div>
+          {[
+            { label: 'Status', value: <Badge color="amber" dot>Draft</Badge> },
+            { label: 'Versions', value: '8' },
+            { label: 'Last edited', value: '2h ago' },
+            { label: 'Created', value: 'Apr 10' },
+          ].map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: '#71717a' }}>{r.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#18181b' }}>{r.value}</span>
+            </div>
+          ))}
+
+          <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: 16, marginTop: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>Tags</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              {['strategy', 'product', 'q2'].map(t => <Badge key={t} color="zinc">{t}</Badge>)}
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: 16, marginTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>AI Tools</div>
+            {['Summarize', 'Action items', 'Rewrite', 'Explain'].map(tool => (
+              <button key={tool} style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+                fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: '#3f3f46',
+                background: '#fff', border: '1px solid #e4e4e7', borderRadius: 7,
+                padding: '7px 10px', cursor: 'pointer', marginBottom: 6, transition: 'all .12s' }}>
+                <Icon name="sparkle" size={13} color="#818cf8" />
+                {tool}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── PROPOSALS PAGE ───────────────────────────────────────────────────────────
+const ProposalsPage = ({ tweaks }) => {
+  const accent = tweaks.accentColor;
+  const [status, setStatus] = React.useState('PENDING');
+  const proposals = [
+    { id: 1, title: 'Update API documentation structure', doc: 'API Documentation v2', by: 'Alex Kim', date: '3h ago', yeas: 2, nays: 0, total: 4 },
+    { id: 2, title: 'Add onboarding checklist section', doc: 'Engineering Onboarding', by: 'Sam Chen', date: '1d ago', yeas: 1, nays: 1, total: 4 },
+    { id: 3, title: 'Revise Q2 goals section', doc: 'Q2 Product Roadmap', by: 'Jane Doe', date: '2d ago', yeas: 3, nays: 0, total: 4 },
+  ];
+
+  return (
+    <div className="page-animate" style={{ padding: '36px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+        <Icon name="git" size={20} color="#a1a1aa" />
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 3 }}>Proposals</div>
+          <div style={{ fontSize: 13, color: '#71717a' }}>Design Team</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#f4f4f5', padding: 4, borderRadius: 10, width: 'fit-content' }}>
+        {['PENDING', 'COMMITTED', 'REJECTED'].map(t => (
+          <button key={t} onClick={() => setStatus(t)} style={{
+            fontFamily: 'inherit', fontSize: 12, fontWeight: 600, padding: '6px 16px', borderRadius: 7,
+            border: 'none', cursor: 'pointer',
+            background: status === t ? '#fff' : 'transparent',
+            color: status === t ? '#18181b' : '#71717a',
+            boxShadow: status === t ? '0 1px 3px rgba(0,0,0,.1)' : 'none',
+          }}>{t.charAt(0)+t.slice(1).toLowerCase()}</button>
+        ))}
+      </div>
+
+      <div className="stagger" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {proposals.map(p => (
+          <Card key={p.id} style={{ padding: '20px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 9, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name="git" size={16} color={accent} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', marginBottom: 4 }}>{p.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#71717a', marginBottom: 14 }}>
+                  <Avatar name={p.by} size={18} />
+                  <span>{p.by}</span>
+                  <span>·</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Icon name="file" size={11} /> {p.doc}
+                  </span>
+                  <span>·</span>
+                  <span>{p.date}</span>
+                </div>
+
+                {/* Vote bar */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#a1a1aa', marginBottom: 6 }}>
+                    <span>{p.yeas} approved · {p.nays} rejected · {p.total - p.yeas - p.nays} pending</span>
+                    <span>{p.total} voters</span>
+                  </div>
+                  <div style={{ height: 5, background: '#f4f4f5', borderRadius: 99, overflow: 'hidden', display: 'flex' }}>
+                    <div style={{ height: '100%', background: '#22c55e', width: `${(p.yeas/p.total)*100}%`, transition: 'width .3s' }} />
+                    <div style={{ height: '100%', background: '#f43f5e', width: `${(p.nays/p.total)*100}%` }} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn variant="primary" size="sm" accent="#059669">
+                    <Icon name="check" size={12} /> Approve
+                  </Btn>
+                  <Btn variant="secondary" size="sm">
+                    <Icon name="x" size={12} /> Reject
+                  </Btn>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── MEMBERS PAGE ─────────────────────────────────────────────────────────────
+const MembersPage = ({ tweaks }) => {
+  const accent = tweaks.accentColor;
+  const members = [
+    { name: 'Jane Doe', email: 'jane@example.com', role: 'OWNER', joined: '6 months ago' },
+    { name: 'Alex Kim', email: 'alex@example.com', role: 'EDITOR', joined: '3 months ago' },
+    { name: 'Sam Chen', email: 'sam@example.com', role: 'EDITOR', joined: '2 months ago' },
+    { name: 'Maria Lopez', email: 'maria@example.com', role: 'VIEWER', joined: '1 month ago' },
+    { name: 'Jordan Park', email: 'jordan@example.com', role: 'VIEWER', joined: '2 weeks ago' },
+  ];
+  const roleColor = { OWNER: 'indigo', EDITOR: 'emerald', VIEWER: 'zinc' };
+  return (
+    <div className="page-animate" style={{ padding: '36px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Icon name="users" size={20} color="#a1a1aa" />
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 3 }}>Members</div>
+            <div style={{ fontSize: 13, color: '#71717a' }}>{members.length} members · Design Team</div>
+          </div>
+        </div>
+        <Btn variant="primary" accent={accent}><Icon name="plus" size={14} /> Invite</Btn>
+      </div>
+
+      <Card>
+        <div className="stagger">
+        {members.map((m, i) => (
+          <div key={m.email} style={{
+            display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px',
+            borderBottom: i < members.length - 1 ? '1px solid #f4f4f5' : 'none'
+          }}>
+            <Avatar name={m.name} size={36} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#18181b' }}>{m.name}</div>
+              <div style={{ fontSize: 12, color: '#a1a1aa' }}>{m.email}</div>
+            </div>
+            <div style={{ fontSize: 12, color: '#a1a1aa' }}>Joined {m.joined}</div>
+            <Badge color={roleColor[m.role]}>{m.role.charAt(0)+m.role.slice(1).toLowerCase()}</Badge>
+            {m.role !== 'OWNER' && (
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a1a1aa', display: 'flex' }}>
+                <Icon name="more" size={16} />
+              </button>
+            )}
+          </div>
+        ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ─── ACTIVITY PAGE ────────────────────────────────────────────────────────────
+const ActivityPage = ({ setPage, tweaks }) => {
+  const accent = tweaks.accentColor;
+
+  // action type → icon + color
+  const actionMeta = {
+    'committed a proposal':  { icon: 'check',    color: '#059669', bg: '#ecfdf5' },
+    'submitted a proposal':  { icon: 'git',      color: '#4f46e5', bg: '#eef2ff' },
+    'created a document':    { icon: 'file',     color: '#0ea5e9', bg: '#f0f9ff' },
+    'updated a document':    { icon: 'edit',     color: '#d97706', bg: '#fffbeb' },
+    'invited a member':      { icon: 'users',    color: '#7c3aed', bg: '#f5f3ff' },
+    'accepted a proposal':   { icon: 'check',    color: '#059669', bg: '#ecfdf5' },
+    'rejected a proposal':   { icon: 'x',       color: '#e11d48', bg: '#fff1f2' },
+    'restored a version':    { icon: 'history',  color: '#71717a', bg: '#f4f4f5' },
+    'created this workspace':{ icon: 'building', color: '#4f46e5', bg: '#eef2ff' },
+  };
+
+  const DOC_ACTIONS = new Set(['committed a proposal','submitted a proposal','created a document','updated a document','accepted a proposal','rejected a proposal','restored a version']);
+  const MEMBER_ACTIONS = new Set(['invited a member']);
+
+  const groups = [
+    {
+      label: 'Today',
+      items: [
+        { user: 'Jane Doe',    action: 'committed a proposal',  target: 'Q2 Product Roadmap',         targetType: 'doc',  time: '2h ago',  detail: 'Proposal #12 — Revise Q2 goals section' },
+        { user: 'Alex Kim',    action: 'submitted a proposal',  target: 'API Documentation v2',        targetType: 'doc',  time: '3h ago',  detail: 'Proposal #11 — Update API documentation structure' },
+        { user: 'Sam Chen',    action: 'created a document',    target: 'Sprint Retrospective — May',  targetType: 'doc',  time: '5h ago',  detail: null },
+      ]
+    },
+    {
+      label: 'Yesterday',
+      items: [
+        { user: 'Jane Doe',    action: 'invited a member',      target: 'Jordan Park',                 targetType: 'user', time: '1d ago',  detail: 'Joined as Viewer' },
+        { user: 'Alex Kim',    action: 'updated a document',    target: 'Engineering Onboarding',      targetType: 'doc',  time: '1d ago',  detail: 'Added section: Tools & Setup' },
+      ]
+    },
+    {
+      label: 'Earlier',
+      items: [
+        { user: 'Maria Lopez', action: 'accepted a proposal',   target: 'Brand Voice & Tone',          targetType: 'doc',  time: '2d ago',  detail: 'Proposal #9 — Add tone guidelines' },
+        { user: 'Sam Chen',    action: 'restored a version',    target: 'Design System Guidelines',    targetType: 'doc',  time: '3d ago',  detail: 'Restored to v4' },
+        { user: 'Jane Doe',    action: 'created this workspace', target: '',                           targetType: null,   time: '6mo ago', detail: null },
+      ]
+    }
+  ];
+
+  const DocLink = ({ name }) => (
+    <span
+      onClick={() => setPage('editor')}
+      style={{ color: accent, fontWeight: 700, cursor: 'pointer',
+        textDecoration: 'none', borderBottom: `1px solid transparent`,
+        transition: 'border-color .12s' }}
+      onMouseEnter={e => e.currentTarget.style.borderBottomColor = accent}
+      onMouseLeave={e => e.currentTarget.style.borderBottomColor = 'transparent'}
+    >
+      {name}
+    </span>
+  );
+
+  return (
+    <div className="page-animate" style={{ padding: '36px 40px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Icon name="activity" size={20} color="#a1a1aa" />
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 3 }}>Activity</div>
+            <div style={{ fontSize: 13, color: '#71717a' }}>Design Team · last 100 events</div>
+          </div>
+        </div>
+        {/* Filter chips */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {['All', 'Documents', 'Proposals', 'Members'].map((f, i) => (
+            <button key={f} style={{
+              fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+              padding: '5px 12px', borderRadius: 99, cursor: 'pointer',
+              border: '1px solid #e4e4e7',
+              background: i === 0 ? '#18181b' : '#fff',
+              color: i === 0 ? '#fff' : '#71717a',
+              transition: 'all .15s'
+            }}>{f}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeline grouped by date */}
+      <div style={{ maxWidth: 680 }}>
+        {groups.map((group, gi) => (
+          <div key={group.label} style={{ marginBottom: 36 }}>
+            {/* Date label */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '.08em', whiteSpace: 'nowrap' }}>{group.label}</span>
+              <div style={{ flex: 1, height: 1, background: '#f4f4f5' }} />
+            </div>
+
+            {/* Events */}
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: 15, top: 4, bottom: 0, width: 1, background: '#f0f0f0' }} />
+              <div className="stagger" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {group.items.map((log, i) => {
+                  const meta = actionMeta[log.action] || { icon: 'activity', color: '#71717a', bg: '#f4f4f5' };
+                  const isDoc = DOC_ACTIONS.has(log.action) && log.target;
+                  const isMember = MEMBER_ACTIONS.has(log.action) && log.target;
+                  return (
+                    <div key={i} className="activity-item" style={{ display: 'flex', gap: 16, paddingBottom: 20, paddingLeft: 0 }}>
+                      {/* Icon dot on timeline */}
+                      <div style={{ position: 'relative', zIndex: 1, flexShrink: 0 }}>
+                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: meta.bg,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: '2px solid #fafafa' }}>
+                          <Icon name={meta.icon} size={13} color={meta.color} />
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <div style={{ flex: 1, paddingTop: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                          <p style={{ fontSize: 13, color: '#3f3f46', lineHeight: 1.55 }}>
+                            <span style={{ fontWeight: 700, color: '#18181b' }}>{log.user}</span>
+                            <span> {log.action} </span>
+                            {isDoc  && <DocLink name={log.target} />}
+                            {isMember && <span style={{ fontWeight: 700, color: '#18181b' }}>{log.target}</span>}
+                          </p>
+                          <span style={{ fontSize: 11, color: '#a1a1aa', whiteSpace: 'nowrap', marginTop: 1, flexShrink: 0 }}>{log.time}</span>
+                        </div>
+                        {log.detail && (
+                          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 7,
+                            background: '#fafafa', border: '1px solid #f0f0f0',
+                            borderRadius: 7, padding: '6px 10px', width: 'fit-content', cursor: isDoc ? 'pointer' : 'default' }}
+                            onClick={() => isDoc && setPage('editor')}>
+                            <Icon name={isDoc ? 'file' : 'users'} size={11} color="#a1a1aa" />
+                            <span style={{ fontSize: 12, color: '#71717a', fontWeight: 500 }}>{log.detail}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── AI ASSISTANT PAGE ────────────────────────────────────────────────────────
+const AiAssistantPage = ({ tweaks }) => {
+  const accent = tweaks.accentColor;
+  const [input, setInput] = React.useState('');
+  const [messages, setMessages] = React.useState([
+    { role: 'assistant', content: 'Hi! I can help you summarize documents, extract action items, rewrite content, or explain any conflicts in your proposals. What would you like to do?' },
+    { role: 'user', content: 'Summarize the Q2 Product Roadmap for me.' },
+    { role: 'assistant', content: 'Here\'s a summary of the **Q2 Product Roadmap**:\n\nThe team is focused on three main goals this quarter: launching a redesigned onboarding flow, shipping API v2 with full documentation, and reaching 10k active users by end of June.\n\nKey milestones are broken into months — April for design reviews, May for engineering, and June for QA and launch.' },
+  ]);
+
+  const suggestions = ['Extract action items', 'Explain a conflict', 'Rewrite this section', 'Suggest tags for document'];
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fafafa' }}>
+      {/* Header */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e4e4e7', padding: '0 28px', height: 52, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ width: 30, height: 30, borderRadius: 9, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="sparkle" size={15} color={accent} />
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#18181b' }}>AI Assistant</span>
+        <Badge color="indigo">Design Team</Badge>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '28px 40px', maxWidth: 760, width: '100%', margin: '0 auto' }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 24, flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
+            {m.role === 'assistant' ? (
+              <div style={{ width: 30, height: 30, borderRadius: 9, background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                <Icon name="sparkle" size={14} color={accent} />
+              </div>
+            ) : <Avatar name="Jane Doe" size={30} />}
+            <div style={{ maxWidth: '78%' }}>
+              <div style={{
+                background: m.role === 'user' ? accent : '#fff',
+                color: m.role === 'user' ? '#fff' : '#18181b',
+                border: m.role === 'assistant' ? '1px solid #e4e4e7' : 'none',
+                padding: '12px 16px', borderRadius: m.role === 'user' ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+                fontSize: 13, lineHeight: 1.65, boxShadow: '0 1px 3px rgba(0,0,0,.06)'
+              }}>
+                {m.content.split('\n').map((line, j) => (
+                  line ? <p key={j} style={{ marginBottom: j < m.content.split('\n').length - 1 ? 6 : 0 }}
+                    dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+                  : <br key={j} />
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Suggestions */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          {suggestions.map(s => (
+            <button key={s} style={{ fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+              padding: '6px 14px', borderRadius: 20, border: '1px solid #e4e4e7',
+              background: '#fff', color: '#52525b', cursor: 'pointer' }}>{s}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Input */}
+      <div style={{ borderTop: '1px solid #e4e4e7', background: '#fff', padding: '16px 40px', flexShrink: 0 }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <input value={input} onChange={e => setInput(e.target.value)}
+            placeholder="Ask the AI assistant…"
+            style={{ flex: 1, fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
+              border: '1.5px solid #e4e4e7', borderRadius: 10, padding: '10px 14px',
+              outline: 'none', color: '#18181b', background: '#fafafa' }} />
+          <Btn variant="primary" accent={accent}><Icon name="send" size={14} /></Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
+const SettingsPage = ({ tweaks }) => {
+  const accent = tweaks.accentColor;
+  const [name, setName] = React.useState('Design Team');
+  const [slug, setSlug] = React.useState('design-team');
+
+  return (
+    <div className="page-animate" style={{ padding: '36px 40px', maxWidth: 660 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
+        <Icon name="settings" size={20} color="#a1a1aa" />
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#18181b', marginBottom: 3 }}>Settings</div>
+          <div style={{ fontSize: 13, color: '#71717a' }}>Design Team</div>
+        </div>
+      </div>
+
+      {/* General */}
+      <Card style={{ padding: '24px 28px', marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b', marginBottom: 20 }}>General</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Input label="Workspace name" value={name} onChange={e => setName(e.target.value)} />
+          <Input label="Workspace slug" value={slug} onChange={e => setSlug(e.target.value)} />
+          <Btn variant="primary" style={{ alignSelf: 'flex-start' }} accent={accent}>Save changes</Btn>
+        </div>
+      </Card>
+
+      {/* Members */}
+      <Card style={{ padding: '24px 28px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#18181b' }}>Permissions</div>
+        </div>
+        {[
+          { label: 'Editors can invite members', enabled: false },
+          { label: 'Viewers can view proposals', enabled: true },
+          { label: 'Auto-commit unanimous proposals', enabled: false },
+        ].map(opt => (
+          <div key={opt.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 14, marginBottom: 14, borderBottom: '1px solid #f4f4f5' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#18181b' }}>{opt.label}</div>
+            </div>
+            <div style={{ width: 38, height: 22, borderRadius: 99,
+              background: opt.enabled ? accent : '#e4e4e7',
+              position: 'relative', cursor: 'pointer', transition: 'background .2s' }}>
+              <div style={{ position: 'absolute', top: 3, left: opt.enabled ? 19 : 3,
+                width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      {/* Danger */}
+      <Card style={{ padding: '24px 28px', border: '1px solid #fecdd3' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#e11d48', marginBottom: 8 }}>Danger zone</div>
+        <p style={{ fontSize: 13, color: '#71717a', marginBottom: 16 }}>Deleting this workspace is permanent and cannot be undone. All documents, proposals and activity logs will be removed.</p>
+        <Btn variant="danger">Delete workspace</Btn>
+      </Card>
+    </div>
+  );
+};
+
+// ─── SHELL ────────────────────────────────────────────────────────────────────
+const dashboardPages = ['dashboard','documents','editor','proposals','members','activity','ai-assistant','settings'];
+const pageTitles = {
+  landing: 'Landing', login: 'Login', signup: 'Sign Up',
+  dashboard: 'Dashboard', documents: 'Documents', editor: 'Doc Editor',
+  proposals: 'Proposals', members: 'Members', activity: 'Activity',
+  'ai-assistant': 'AI Assistant', settings: 'Settings'
+};
+
+function App() {
+  const [page, setPage] = React.useState(() => localStorage.getItem('cw_page') || 'landing');
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [tweakVisible, setTweakVisible] = React.useState(false);
+
+  React.useEffect(() => { localStorage.setItem('cw_page', page); }, [page]);
+
+  React.useEffect(() => {
+    window.addEventListener('message', e => {
+      if (e.data?.type === '__activate_edit_mode') setTweakVisible(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweakVisible(false);
+    });
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+  }, []);
+
+  const updateTweak = (key, val) => {
+    const next = { ...tweaks, [key]: val };
+    setTweaks(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+  };
+
+  const inDashboard = dashboardPages.includes(page);
+
+  const accentSwatches = ['#4f46e5','#7c3aed','#0ea5e9','#059669','#d97706','#e11d48'];
+
+  return (
+    <div className="page-wrapper">
+      {/* Demo nav */}
+      <div className="demo-nav">
+        <span className="demo-nav-label">Pages</span>
+        {Object.entries(pageTitles).map(([id, label]) => (
+          <button key={id} className={`demo-btn${page === id ? ' active' : ''}`} onClick={() => setPage(id)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="page-content">
+        {!inDashboard ? (
+          page === 'landing' ? <LandingPage setPage={setPage} tweaks={tweaks} /> :
+          <AuthPage mode={page} setPage={setPage} tweaks={tweaks} />
+        ) : (
+          <div style={{ display: 'flex', height: '100%' }}>
+            {page !== 'editor' && <Sidebar page={page} setPage={setPage} tweaks={tweaks} />}
+            {page === 'editor' && (
+              <div style={{ width: 220, background: tweaks.sidebarStyle === 'dark' ? '#18181b' : '#fff', borderRight: '1px solid #e4e4e7', flexShrink: 0 }}>
+                <Sidebar page={page} setPage={setPage} tweaks={tweaks} />
+              </div>
+            )}
+            <main style={{ flex: 1, overflowY: page === 'editor' || page === 'ai-assistant' ? 'hidden' : 'auto', background: '#fafafa', height: '100%' }}>
+              {page === 'dashboard'     && <DashboardPage setPage={setPage} tweaks={tweaks} />}
+              {page === 'documents'     && <DocumentsPage setPage={setPage} tweaks={tweaks} />}
+              {page === 'editor'        && <EditorPage setPage={setPage} tweaks={tweaks} />}
+              {page === 'proposals'     && <ProposalsPage tweaks={tweaks} />}
+              {page === 'members'       && <MembersPage tweaks={tweaks} />}
+              {page === 'activity'      && <ActivityPage setPage={setPage} tweaks={tweaks} />}
+              {page === 'ai-assistant'  && <AiAssistantPage tweaks={tweaks} />}
+              {page === 'settings'      && <SettingsPage tweaks={tweaks} />}
+            </main>
+          </div>
+        )}
+      </div>
+
+      {/* Tweaks panel */}
+      <div className={`tweak-panel ${tweakVisible ? 'visible' : ''}`}>
+        <div className="tweak-title">Tweaks</div>
+        <div className="tweak-row">
+          <label>Accent color</label>
+          <div className="tweak-swatch-row">
+            {accentSwatches.map(c => (
+              <div key={c} className={`tweak-swatch${tweaks.accentColor === c ? ' selected' : ''}`}
+                style={{ background: c }} onClick={() => updateTweak('accentColor', c)} />
+            ))}
+          </div>
+        </div>
+        <div className="tweak-row">
+          <label>Sidebar style</label>
+          <select value={tweaks.sidebarStyle} onChange={e => updateTweak('sidebarStyle', e.target.value)}>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div className="tweak-row">
+          <label>Landing style</label>
+          <select value={tweaks.landingStyle} onChange={e => updateTweak('landingStyle', e.target.value)}>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

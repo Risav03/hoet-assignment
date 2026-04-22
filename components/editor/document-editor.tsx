@@ -5,8 +5,6 @@ import { DraftAutoSave, loadDraft, clearDraft } from "./draft-auto-save";
 import { VersionTimeline } from "@/components/versions/version-timeline";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -16,11 +14,12 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Clock, Send, Save, ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sparkles, FileText, Tag, Clock } from "lucide-react";
 import { createPatch } from "@/lib/sync/differ";
 import { useSSE } from "@/lib/hooks/use-sse";
 import { useSyncEngine } from "@/lib/hooks/use-sync-engine";
 import Link from "next/link";
+import { format } from "date-fns";
 
 interface Document {
   id: string;
@@ -29,6 +28,8 @@ interface Document {
   contentSnapshot: string;
   currentVersionId?: string | null;
   tags: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Version {
@@ -48,7 +49,22 @@ interface DocumentEditorProps {
   workspaceSlug?: string;
 }
 
-export function DocumentEditor({ document, versions, userRole, membersCount = 1, workspaceSlug }: DocumentEditorProps) {
+type EditorView = "edit" | "preview" | "history";
+
+const AI_TOOLS = [
+  { label: "Summarize", action: "summarize" },
+  { label: "Action items", action: "action_items" },
+  { label: "Rewrite", action: "rewrite" },
+  { label: "Explain", action: "explain" },
+];
+
+export function DocumentEditor({
+  document,
+  versions,
+  userRole,
+  membersCount = 1,
+  workspaceSlug,
+}: DocumentEditorProps) {
   const router = useRouter();
   const canEdit = userRole === "OWNER" || userRole === "EDITOR";
 
@@ -57,6 +73,7 @@ export function DocumentEditor({ document, versions, userRole, membersCount = 1,
   const [saving, setSaving] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [previewVersion, setPreviewVersion] = useState<Version | null>(null);
+  const [view, setView] = useState<EditorView>("edit");
 
   useSyncEngine();
 
@@ -142,32 +159,91 @@ export function DocumentEditor({ document, versions, userRole, membersCount = 1,
 
   const currentContent = previewVersion ? previewVersion.contentSnapshot : content;
 
+  const VIEWS: EditorView[] = ["edit", "preview", "history"];
+
   return (
-    <div className="flex flex-col h-screen">
-      <header className="flex items-center gap-3 px-6 py-3 border-b bg-white dark:bg-slate-950 shrink-0">
-        <Link href={`/workspaces/${workspaceSlug ?? document.workspaceId}/documents`}>
-          <Button variant="ghost" size="sm" className="gap-1 text-slate-500">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-        </Link>
-        <Separator orientation="vertical" className="h-5" />
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          disabled={!canEdit || !!previewVersion}
-          className="border-0 text-lg font-semibold bg-transparent shadow-none focus-visible:ring-0 px-0 max-w-xl"
-        />
-        <div className="flex items-center gap-1.5 ml-auto">
+    <div className="flex flex-col" style={{ height: "100vh" }}>
+      {/* Top bar — 52px */}
+      <header
+        className="flex items-center gap-3 px-6 shrink-0"
+        style={{
+          height: 52,
+          background: "#ffffff",
+          borderBottom: "1px solid #e4e4e7",
+        }}
+      >
+        {/* Left: breadcrumb */}
+        <div className="flex items-center gap-2 min-w-0">
+          <Link href={`/workspaces/${workspaceSlug ?? document.workspaceId}/documents`}>
+            <button
+              className="flex items-center gap-1 transition-colors"
+              style={{ color: "#71717a", fontSize: 13, fontWeight: 500 }}
+            >
+              <ArrowLeft style={{ width: 14, height: 14 }} />
+              Documents
+            </button>
+          </Link>
+          <span style={{ color: "#d4d4d8" }}>/</span>
+          <span
+            className="truncate max-w-[200px]"
+            style={{ fontSize: 13, fontWeight: 600, color: "#18181b" }}
+          >
+            {title}
+          </span>
+        </div>
+
+        {/* Center: Edit / Preview / History segmented tabs */}
+        <div className="flex items-center mx-auto">
+          <div
+            className="flex items-center p-0.5 gap-0.5"
+            style={{ background: "#f4f4f5", borderRadius: 8 }}
+          >
+            {VIEWS.map((v) => (
+              <button
+                key={v}
+                onClick={() => {
+                  setView(v);
+                  if (v !== "history") setPreviewVersion(null);
+                }}
+                className="transition-all font-semibold capitalize"
+                style={{
+                  padding: "4px 14px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  background: view === v ? "#ffffff" : "transparent",
+                  color: view === v ? "#18181b" : "#71717a",
+                  boxShadow: view === v ? "0 1px 3px rgba(0,0,0,.08)" : "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: Draft + autosave + actions */}
+        <div className="flex items-center gap-2 ml-auto">
           <DraftAutoSave
             documentId={document.id}
             workspaceId={document.workspaceId}
             content={content}
           />
           {previewVersion && (
-            <Badge variant="secondary" className="text-xs">
-              Previewing v{previewVersion.versionNumber}
-            </Badge>
+            <span
+              className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
+              style={{ background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }}
+            >
+              v{previewVersion.versionNumber}
+            </span>
           )}
+          <span
+            className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
+            style={{ background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }}
+          >
+            Draft
+          </span>
           {canEdit && !previewVersion && (
             <>
               <Button
@@ -175,72 +251,218 @@ export function DocumentEditor({ document, versions, userRole, membersCount = 1,
                 size="sm"
                 onClick={handleSave}
                 disabled={saving}
-                className="gap-1.5"
+                style={{ borderRadius: 8, fontSize: 12, fontWeight: 600 }}
               >
-                <Save className="w-4 h-4" />
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving…" : "Save"}
               </Button>
               {membersCount > 1 ? (
                 <Button
                   size="sm"
                   onClick={handlePropose}
                   disabled={proposing}
-                  className="gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white"
+                  className="font-semibold text-white"
+                  style={{
+                    background: "#4f46e5",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    boxShadow: "0 1px 2px rgba(79,70,229,.25)",
+                  }}
                 >
-                  <Send className="w-4 h-4" />
-                  {proposing ? "Submitting..." : "Propose change"}
+                  {proposing ? "Submitting…" : "Propose"}
                 </Button>
               ) : (
-                <span className="text-xs text-slate-400 italic px-2">
-                  Only collaborator — proposals disabled
+                <span style={{ fontSize: 12, color: "#a1a1aa", fontStyle: "italic" }}>
+                  Only collaborator
                 </span>
               )}
             </>
           )}
-          <Sheet>
-            <SheetTrigger>
-              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-500">
-                <Clock className="w-4 h-4" />
-                History
-              </Button>
-            </SheetTrigger>
-            <SheetContent className="w-80">
-              <SheetHeader>
-                <SheetTitle>Version History</SheetTitle>
-              </SheetHeader>
-              <div className="mt-4">
-                {previewVersion && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mb-3"
-                    onClick={() => setPreviewVersion(null)}
-                  >
-                    Exit preview
-                  </Button>
-                )}
-                <VersionTimeline
-                  versions={versions}
-                  documentId={document.id}
-                  currentVersionId={document.currentVersionId}
-                  canRestore={canEdit}
-                  onPreview={setPreviewVersion}
-                />
-              </div>
-            </SheetContent>
-          </Sheet>
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-5xl mx-auto min-h-screen">
-          <RichTextEditor
-            content={currentContent}
-            onChange={setContent}
-            editable={canEdit && !previewVersion}
-            className="min-h-screen shadow-sm"
-          />
+      {/* Editor area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main editor */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ background: "#ffffff", padding: "40px 60px" }}
+        >
+          {view === "history" ? (
+            <div style={{ maxWidth: 560 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b", marginBottom: 16 }}>
+                Version History
+              </h2>
+              {previewVersion && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mb-4"
+                  onClick={() => setPreviewVersion(null)}
+                >
+                  Exit preview
+                </Button>
+              )}
+              <VersionTimeline
+                versions={versions}
+                documentId={document.id}
+                currentVersionId={document.currentVersionId}
+                canRestore={canEdit}
+                onPreview={setPreviewVersion}
+              />
+            </div>
+          ) : (
+            <div style={{ maxWidth: 680 }}>
+              {/* Title */}
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={!canEdit || view === "preview" || !!previewVersion}
+                className="border-0 shadow-none focus-visible:ring-0 px-0 mb-6"
+                style={{
+                  fontSize: 28,
+                  fontWeight: 800,
+                  color: "#18181b",
+                  background: "transparent",
+                  borderBottom: "none",
+                }}
+                placeholder="Untitled document"
+              />
+              <RichTextEditor
+                content={currentContent}
+                onChange={setContent}
+                editable={canEdit && view === "edit" && !previewVersion}
+                className="min-h-[400px]"
+              />
+            </div>
+          )}
         </div>
+
+        {/* Right panel — 240px */}
+        <aside
+          className="shrink-0 overflow-y-auto"
+          style={{
+            width: 240,
+            background: "#fafafa",
+            borderLeft: "1px solid #e4e4e7",
+            padding: 20,
+          }}
+        >
+          {/* Details */}
+          <section className="mb-6">
+            <h3
+              className="mb-3 uppercase"
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "#a1a1aa" }}
+            >
+              Details
+            </h3>
+            <div className="space-y-2">
+              {[
+                {
+                  label: "Created",
+                  value: document.createdAt
+                    ? format(new Date(document.createdAt), "MMM d, yyyy")
+                    : "—",
+                  icon: Clock,
+                },
+                {
+                  label: "Updated",
+                  value: document.updatedAt
+                    ? format(new Date(document.updatedAt), "MMM d, yyyy")
+                    : "—",
+                  icon: FileText,
+                },
+                {
+                  label: "Versions",
+                  value: String(versions.length),
+                  icon: Clock,
+                },
+              ].map(({ label, value, icon: Icon }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <span style={{ fontSize: 12, color: "#71717a" }}>{label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: "#18181b" }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Tags */}
+          {document.tags.length > 0 && (
+            <section className="mb-6">
+              <h3
+                className="mb-3 uppercase flex items-center gap-1.5"
+                style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "#a1a1aa" }}
+              >
+                <Tag style={{ width: 10, height: 10 }} />
+                Tags
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {document.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full px-2.5 py-0.5 font-semibold"
+                    style={{
+                      fontSize: 11,
+                      background: "#f4f4f5",
+                      color: "#52525b",
+                      border: "1px solid #e4e4e7",
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* AI Tools */}
+          {/* <section>
+            <h3
+              className="mb-3 uppercase flex items-center gap-1.5"
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "#a1a1aa" }}
+            >
+              <Sparkles style={{ width: 10, height: 10 }} />
+              AI Tools
+            </h3>
+            <div className="space-y-1.5">
+              {AI_TOOLS.map((tool) => (
+                <Sheet key={tool.action}>
+                  <SheetTrigger
+                    className="w-full flex items-center gap-2 transition-colors text-left"
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e4e4e7",
+                      borderRadius: 7,
+                      padding: "7px 10px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#18181b",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#c7d2fe";
+                      (e.currentTarget as HTMLButtonElement).style.background = "#eef2ff";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = "#e4e4e7";
+                      (e.currentTarget as HTMLButtonElement).style.background = "#ffffff";
+                    }}
+                  >
+                    <Sparkles style={{ width: 13, height: 13, color: "#818cf8" }} />
+                    {tool.label}
+                  </SheetTrigger>
+                  <SheetContent className="w-80">
+                    <SheetHeader>
+                      <SheetTitle>{tool.label}</SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-4 text-sm text-muted-foreground">
+                      AI {tool.label.toLowerCase()} coming soon.
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              ))}
+            </div>
+          </section> */}
+        </aside>
       </div>
     </div>
   );

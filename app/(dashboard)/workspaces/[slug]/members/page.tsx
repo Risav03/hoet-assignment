@@ -2,8 +2,6 @@ import { auth } from "@/auth";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceBySlug, getWorkspaceMembers, getWorkspaceMember } from "@/lib/dal/workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { InviteMemberDialog } from "@/components/workspace/invite-member-dialog";
@@ -11,6 +9,14 @@ import { MemberActions } from "@/components/workspace/member-actions";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+}
+
+function getRoleBadgeStyle(role: string) {
+  if (role === "OWNER")
+    return { background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe" };
+  if (role === "EDITOR")
+    return { background: "#ecfdf5", color: "#065f46", border: "1px solid #6ee7b7" };
+  return { background: "#f4f4f5", color: "#52525b", border: "1px solid #e4e4e7" };
 }
 
 export default async function MembersPage({ params }: PageProps) {
@@ -28,13 +34,21 @@ export default async function MembersPage({ params }: PageProps) {
   const isOwner = currentMember.role === "OWNER";
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="page-animate" style={{ padding: "36px 40px" }}>
+      {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Users className="w-6 h-6 text-slate-400" />
+          <div
+            className="flex items-center justify-center"
+            style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff" }}
+          >
+            <Users style={{ width: 17, height: 17, color: "#4f46e5" }} />
+          </div>
           <div>
-            <h1 className="text-2xl font-bold">Members</h1>
-            <p className="text-slate-500 text-sm">
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#18181b", marginBottom: 2 }}>
+              Members
+            </h1>
+            <p style={{ fontSize: 13, color: "#71717a" }}>
               {members.length} member{members.length !== 1 ? "s" : ""} · {workspace.name}
             </p>
           </div>
@@ -42,44 +56,62 @@ export default async function MembersPage({ params }: PageProps) {
         {isOwner && <InviteMemberDialog workspaceId={workspace.id} />}
       </div>
 
-      <div className="space-y-3">
-        {members.map((m: typeof members[0]) => (
-          <Card key={m.id}>
-            <CardContent className="flex items-center gap-4 py-4">
-              <Avatar className="w-10 h-10">
-                <AvatarFallback className="bg-indigo-100 text-indigo-600">
-                  {m.user.name?.[0]?.toUpperCase() ?? "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">{m.user.name}</p>
-                <p className="text-xs text-slate-400">{m.user.email}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400">
-                  Joined {formatDistanceToNow(new Date(m.createdAt), { addSuffix: true })}
-                </span>
-                <Badge
-                  className={
-                    m.role === "OWNER"
-                      ? "bg-indigo-100 text-indigo-700 border-indigo-200"
-                      : m.role === "EDITOR"
-                      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                      : "bg-slate-100 text-slate-600 border-slate-200"
-                  }
-                >
-                  {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
-                </Badge>
-                {isOwner && m.user.id !== session.user.id && (
-                  <MemberActions
-                    workspaceId={workspace.id}
-                    userId={m.user.id}
-                    currentRole={m.role}
-                  />
-                )}
-              </div>
-            </CardContent>
-          </Card>
+      {/* Members list card */}
+      <div
+        className="stagger"
+        style={{
+          background: "#ffffff",
+          border: "1px solid #e4e4e7",
+          borderRadius: 12,
+          boxShadow: "0 1px 3px rgba(0,0,0,.04)",
+          overflow: "hidden",
+        }}
+      >
+        {members.map((m: typeof members[0], idx: number) => (
+          <div
+            key={m.id}
+            className="flex items-center gap-4"
+            style={{
+              padding: "14px 20px",
+              borderBottom:
+                idx < members.length - 1 ? "1px solid #f4f4f5" : "none",
+            }}
+          >
+            <Avatar style={{ width: 36, height: 36 }}>
+              <AvatarFallback
+                className="font-bold text-sm"
+                style={{ background: "#eef2ff", color: "#4338ca" }}
+              >
+                {m.user.name?.[0]?.toUpperCase() ?? "U"}
+              </AvatarFallback>
+            </Avatar>
+
+            <div className="flex-1 min-w-0">
+              <p style={{ fontSize: 14, fontWeight: 600, color: "#18181b" }}>{m.user.name}</p>
+              <p style={{ fontSize: 12, color: "#71717a" }}>{m.user.email}</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span style={{ fontSize: 12, color: "#a1a1aa" }}>
+                Joined {formatDistanceToNow(new Date(m.createdAt), { addSuffix: true })}
+              </span>
+
+              <span
+                className="rounded-full px-2.5 py-0.5 font-semibold text-xs"
+                style={getRoleBadgeStyle(m.role)}
+              >
+                {m.role.charAt(0) + m.role.slice(1).toLowerCase()}
+              </span>
+
+              {isOwner && m.user.id !== session.user.id && (
+                <MemberActions
+                  workspaceId={workspace.id}
+                  userId={m.user.id}
+                  currentRole={m.role}
+                />
+              )}
+            </div>
+          </div>
         ))}
       </div>
     </div>

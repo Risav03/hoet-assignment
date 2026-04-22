@@ -66,8 +66,23 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
           onClick: () => setOpen(true),
         })
       ) : (
-        <DialogTrigger className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
-          <Plus className="w-4 h-4" />
+        <DialogTrigger
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "#4f46e5",
+            color: "#ffffff",
+            border: "none",
+            borderRadius: 8,
+            padding: "7px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            boxShadow: "0 1px 2px rgba(79,70,229,.25)",
+          }}
+        >
+          <Plus style={{ width: 14, height: 14 }} />
           New workspace
         </DialogTrigger>
       )}
@@ -80,21 +95,38 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <div className="space-y-1.5">
-            <Label htmlFor="ws-name">Workspace name</Label>
+            <Label
+              htmlFor="ws-name"
+              style={{ fontSize: 12, fontWeight: 600, color: "#3f3f46" }}
+            >
+              Workspace name
+            </Label>
             <Input
               id="ws-name"
               placeholder="My Team"
               {...register("name")}
+              style={{ border: "1.5px solid #e4e4e7", borderRadius: 8, fontSize: 13 }}
+              className="focus-visible:border-indigo-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,.1)] focus-visible:ring-0"
             />
             {errors.name && (
               <p className="text-sm text-destructive">{errors.name.message}</p>
             )}
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              style={{ borderRadius: 8, fontSize: 13 }}
+            >
               Cancel
             </Button>
-            <Button type="submit" className="bg-indigo-600 hover:bg-indigo-500" disabled={loading}>
+            <Button
+              type="submit"
+              disabled={loading}
+              className="font-semibold text-white"
+              style={{ background: "#4f46e5", borderRadius: 8, fontSize: 13 }}
+            >
               {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
               Create
             </Button>
