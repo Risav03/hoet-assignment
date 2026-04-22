@@ -50,12 +50,12 @@ export function Sidebar({ user, workspaces }: SidebarProps) {
 
   const globalNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    { href: "/ai-assistant", icon: Bot, label: "AI Assistant" },
   ];
 
   const workspaceNav = workspaceSlug
     ? [
         { href: `${base}/documents`, icon: FolderOpen, label: "Documents" },
+        { href: `${base}/ai-assistant`, icon: Bot, label: "AI Assistant" },
         { href: `${base}/proposals`, icon: GitPullRequest, label: "Proposals" },
         { href: `${base}/members`, icon: Users, label: "Members" },
         { href: `${base}/activity`, icon: Activity, label: "Activity" },
