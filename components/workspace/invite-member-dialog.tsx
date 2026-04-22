@@ -28,13 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserPlus, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useInviteMember } from "@/lib/hooks/use-member-mutations";
 
 export function InviteMemberDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const { mutate: inviteMember, isPending: loading } = useInviteMember(workspaceId);
 
   const {
     register,
@@ -47,26 +45,13 @@ export function InviteMemberDialog({ workspaceId }: { workspaceId: string }) {
     defaultValues: { role: "VIEWER" as const },
   });
 
-  async function onSubmit(data: InviteFormInput) {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        toast.error(json.error ?? "Failed to invite member");
-        return;
-      }
-      toast.success(`Invited ${data.email}`);
-      setOpen(false);
-      reset();
-      router.refresh();
-    } finally {
-      setLoading(false);
-    }
+  function onSubmit(data: InviteFormInput) {
+    inviteMember(data, {
+      onSuccess: () => {
+        setOpen(false);
+        reset();
+      },
+    });
   }
 
   return (

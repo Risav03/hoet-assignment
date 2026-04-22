@@ -17,13 +17,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useCreateDocument } from "@/lib/hooks/use-document-mutations";
 
 export function CreateDocumentDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const { mutate: createDocument, isPending: loading } = useCreateDocument(workspaceId);
 
   const titleOnlySchema = z.object({ title: z.string().min(1, "Title is required").max(500) });
 
@@ -36,27 +34,13 @@ export function CreateDocumentDialog({ workspaceId }: { workspaceId: string }) {
     resolver: zodResolver(titleOnlySchema),
   });
 
-  async function onSubmit(data: CreateDocumentFormInput) {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/documents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        toast.error(json.error ?? "Failed to create document");
-        return;
-      }
-      toast.success("Document created!");
-      setOpen(false);
-      reset();
-      router.push(`/documents/${json.id}`);
-      router.refresh();
-    } finally {
-      setLoading(false);
-    }
+  function onSubmit(data: CreateDocumentFormInput) {
+    createDocument(data, {
+      onSuccess: () => {
+        setOpen(false);
+        reset();
+      },
+    });
   }
 
   return (

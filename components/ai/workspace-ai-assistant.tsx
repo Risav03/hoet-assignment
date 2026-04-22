@@ -7,6 +7,7 @@ import { Sparkles, Send, Loader2, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 
 interface DocSuggestion {
   id: string;
@@ -77,14 +78,30 @@ export function WorkspaceAiAssistant({
   const [chatLoading, setChatLoading] = useState(false);
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [mentionedDocs, setMentionedDocs] = useState<MentionedDoc[]>([]);
-  const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fetchControllerRef = useRef<AbortController | null>(null);
+
+  const { data: suggestionData, isFetching: suggestionLoading } = useQuery({
+    queryKey: ["documents", "search", workspaceId, mentionQuery],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/documents?query=${encodeURIComponent(mentionQuery ?? "")}&limit=8`,
+        { signal }
+      );
+      if (!res.ok) return { documents: [] };
+      return res.json() as Promise<{ documents: { id: string; title: string }[] }>;
+    },
+    enabled: mentionQuery !== null,
+    staleTime: 30_000,
+  });
+
+  const suggestions: DocSuggestion[] = (suggestionData?.documents ?? []).map((d) => ({
+    id: d.id,
+    title: d.title,
+  }));
 
   const insertMention = useCallback(
     (doc: DocSuggestion) => {
@@ -169,36 +186,14 @@ export function WorkspaceAiAssistant({
 
       if (!atMatch) {
         setMentionQuery(null);
-        setSuggestions([]);
+        setActiveSuggestion(0);
         return;
       }
 
-      const query = atMatch[1];
-      setMentionQuery(query);
-
-      fetchControllerRef.current?.abort();
-      const controller = new AbortController();
-      fetchControllerRef.current = controller;
-
-      setSuggestionLoading(true);
-      fetch(
-        `/api/workspaces/${workspaceId}/documents?query=${encodeURIComponent(query)}&limit=8`,
-        { signal: controller.signal }
-      )
-        .then((r) => r.json())
-        .then((data) => {
-          setSuggestions(
-            (data.documents ?? []).map((d: { id: string; title: string }) => ({
-              id: d.id,
-              title: d.title,
-            }))
-          );
-          setActiveSuggestion(0);
-        })
-        .catch(() => {})
-        .finally(() => setSuggestionLoading(false));
+      setMentionQuery(atMatch[1]);
+      setActiveSuggestion(0);
     },
-    [workspaceId]
+    []
   );
 
   const handleKeyDown = useCallback(

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { ProgressBar } from "@/components/providers/progress-bar";
+import { QueryProvider } from "@/components/providers/query-provider";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -41,13 +42,15 @@ export default function RootLayout({
     >
       <body className="h-full flex flex-col bg-background text-foreground">
         <AuthSessionProvider>
-          <TooltipProvider>
-            <Suspense fallback={null}>
-              <ProgressBar />
-            </Suspense>
-            {children}
-            <Toaster richColors position="bottom-right" />
-          </TooltipProvider>
+          <QueryProvider>
+            <TooltipProvider>
+              <Suspense fallback={null}>
+                <ProgressBar />
+              </Suspense>
+              {children}
+              <Toaster richColors position="bottom-right" />
+            </TooltipProvider>
+          </QueryProvider>
         </AuthSessionProvider>
       </body>
     </html>

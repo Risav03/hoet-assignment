@@ -33,7 +33,8 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { usePendingProposalCount } from "@/lib/hooks/use-pending-count";
 
 interface Workspace {
   id: string;
@@ -58,32 +59,8 @@ function NavContent({
 
   const base = workspaceSlug ? `/workspaces/${workspaceSlug}` : "";
 
-  const [pendingCount, setPendingCount] = useState(0);
-
-  useEffect(() => {
-    if (!currentWorkspace?.id) {
-      setPendingCount(0);
-      return;
-    }
-
-    const workspaceId = currentWorkspace.id;
-
-    async function fetchCount() {
-      try {
-        const res = await fetch(`/api/proposals/pending-count?workspaceId=${workspaceId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setPendingCount(data.count ?? 0);
-        }
-      } catch {
-        // silently ignore poll errors
-      }
-    }
-
-    fetchCount();
-    const interval = setInterval(fetchCount, 15_000);
-    return () => clearInterval(interval);
-  }, [currentWorkspace?.id]);
+  const { data: pendingData } = usePendingProposalCount(currentWorkspace?.id);
+  const pendingCount = pendingData?.count ?? 0;
 
   const globalNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },

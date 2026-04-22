@@ -15,8 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useCreateWorkspace } from "@/lib/hooks/use-workspace-mutations";
 
 interface CreateWorkspaceDialogProps {
   trigger?: React.ReactNode;
@@ -24,8 +23,7 @@ interface CreateWorkspaceDialogProps {
 
 export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const { mutate: createWorkspace, isPending: loading } = useCreateWorkspace();
 
   const {
     register,
@@ -36,27 +34,13 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
     resolver: zodResolver(createWorkspaceSchema),
   });
 
-  async function onSubmit(data: CreateWorkspaceInput) {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        toast.error(json.error ?? "Failed to create workspace");
-        return;
-      }
-      toast.success("Workspace created!");
-      setOpen(false);
-      reset();
-      router.push(`/workspaces/${json.slug}`);
-      router.refresh();
-    } finally {
-      setLoading(false);
-    }
+  function onSubmit(data: CreateWorkspaceInput) {
+    createWorkspace(data, {
+      onSuccess: () => {
+        setOpen(false);
+        reset();
+      },
+    });
   }
 
   return (

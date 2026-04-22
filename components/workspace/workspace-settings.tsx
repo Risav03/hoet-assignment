@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Trash2, Settings } from "lucide-react";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useUpdateWorkspace, useDeleteWorkspace } from "@/lib/hooks/use-workspace-mutations";
 
 interface Workspace {
   id: string;
@@ -80,11 +79,11 @@ function SectionCard({
 }
 
 export function WorkspaceSettings({ workspace }: { workspace: Workspace }) {
-  const router = useRouter();
-  const [deleting, setDeleting] = useState(false);
   const [permissions, setPermissions] = useState<Record<string, boolean>>(
     Object.fromEntries(PERMISSIONS.map((p) => [p.id, false]))
   );
+  const { mutate: updateWorkspace } = useUpdateWorkspace(workspace.id);
+  const { mutate: deleteWorkspace, isPending: deleting } = useDeleteWorkspace(workspace.id);
 
   const {
     register,
@@ -95,44 +94,18 @@ export function WorkspaceSettings({ workspace }: { workspace: Workspace }) {
     defaultValues: { name: workspace.name },
   });
 
-  async function onSubmit(data: UpdateWorkspaceInput) {
-    const res = await fetch(`/api/workspaces/${workspace.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      toast.error(err.error ?? "Failed to update workspace");
-      return;
-    }
-    toast.success("Workspace updated");
-    router.refresh();
+  function onSubmit(data: UpdateWorkspaceInput) {
+    updateWorkspace(data);
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (
       !confirm(
         "Are you sure? This will permanently delete the workspace and all its data."
       )
     )
       return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/workspaces/${workspace.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to delete workspace");
-        return;
-      }
-      toast.success("Workspace deleted");
-      router.push("/dashboard");
-      router.refresh();
-    } finally {
-      setDeleting(false);
-    }
+    deleteWorkspace();
   }
 
   return (

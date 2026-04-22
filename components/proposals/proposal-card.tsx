@@ -4,10 +4,9 @@ import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Check, X, Loader2, FileText, GitPullRequest, ChevronDown, ChevronUp } from "lucide-react";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ProposalDiff } from "./proposal-diff";
+import { useVoteProposal } from "@/lib/hooks/use-proposal-mutations";
 
 interface Vote {
   id: string;
@@ -45,10 +44,12 @@ const STATUS_CLASS: Record<string, string> = {
   COMMITTED: "bg-accent text-accent-foreground border-accent-border",
 };
 
-export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) {
-  const router = useRouter();
-  const [voting, setVoting] = useState<"APPROVE" | "REJECT" | null>(null);
+export function ProposalCard({ proposal, userRole, userId, workspaceId }: ProposalCardProps) {
   const [showDiff, setShowDiff] = useState(false);
+  const { mutate: vote, isPending: voting, variables: votingDecision } = useVoteProposal(
+    proposal.id,
+    workspaceId
+  );
 
   const canVote =
     (userRole === "OWNER" || userRole === "EDITOR") && proposal.status === "PENDING";
@@ -58,33 +59,6 @@ export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) 
   const totalVotes = approvals + rejections;
   const approvePct = totalVotes > 0 ? Math.round((approvals / totalVotes) * 100) : 0;
   const statusClass = STATUS_CLASS[proposal.status] ?? STATUS_CLASS.PENDING;
-
-  async function handleVote(decision: "APPROVE" | "REJECT") {
-    setVoting(decision);
-    try {
-      const res = await fetch(`/api/proposals/${proposal.id}/vote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to vote");
-        return;
-      }
-      const result = await res.json();
-      if (result.newStatus === "COMMITTED") {
-        toast.success("Proposal committed! Document updated.");
-      } else if (result.newStatus === "REJECTED") {
-        toast.info("Proposal rejected.");
-      } else {
-        toast.success("Vote recorded.");
-      }
-      router.refresh();
-    } finally {
-      setVoting(null);
-    }
-  }
 
   return (
     <div className="bg-card border border-border rounded-xl p-[18px] shadow-sm">
@@ -175,11 +149,11 @@ export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) 
             )}
             <Button
               size="sm"
-              disabled={!!voting}
-              onClick={() => handleVote("APPROVE")}
+              disabled={voting}
+              onClick={() => vote("APPROVE")}
               className="font-semibold text-white bg-success rounded-lg text-xs h-[30px] px-3"
             >
-              {voting === "APPROVE" ? (
+              {voting && votingDecision === "APPROVE" ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <Check className="w-3 h-3 mr-1" />
@@ -189,11 +163,11 @@ export function ProposalCard({ proposal, userRole, userId }: ProposalCardProps) 
             <Button
               size="sm"
               variant="outline"
-              disabled={!!voting}
-              onClick={() => handleVote("REJECT")}
+              disabled={voting}
+              onClick={() => vote("REJECT")}
               className="rounded-lg text-xs h-[30px] px-3 text-muted-foreground border-border"
             >
-              {voting === "REJECT" ? (
+              {voting && votingDecision === "REJECT" ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <X className="w-3 h-3 mr-1" />

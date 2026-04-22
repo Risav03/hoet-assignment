@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Tag, Clock, FileText, PanelRight, Save, Send, X } from "lucide-react";
+import { useSaveDocument, useSubmitProposal } from "@/lib/hooks/use-document-mutations";
 import { createPatch } from "@/lib/sync/differ";
 import { useSSE } from "@/lib/hooks/use-sse";
 import { useSyncEngine } from "@/lib/hooks/use-sync-engine";
@@ -65,11 +66,12 @@ export function DocumentEditor({
 
   const [title, setTitle] = useState(document.title);
   const [content, setContent] = useState(document.contentSnapshot);
-  const [saving, setSaving] = useState(false);
-  const [proposing, setProposing] = useState(false);
   const [previewVersion, setPreviewVersion] = useState<Version | null>(null);
   const [view, setView] = useState<EditorView>("edit");
   const [conflictDraft, setConflictDraft] = useState<string | null>(null);
+
+  const { mutate: saveDocument, isPending: saving } = useSaveDocument(document.id);
+  const { mutate: submitProposal, isPending: proposing } = useSubmitProposal();
 
   useSyncEngine();
 
@@ -130,54 +132,29 @@ export function DocumentEditor({
     checkDraft();
   }, [document.id, document.contentSnapshot, document.updatedAt]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     if (!canEdit) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/documents/${document.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to save");
-        return;
+    saveDocument(
+      { title, content },
+      {
+        onSuccess: async () => {
+          await clearDraft(document.id);
+        },
       }
-      await clearDraft(document.id);
-      toast.success("Document saved");
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
-  }, [canEdit, document.id, title, content, router]);
+    );
+  }, [canEdit, saveDocument, title, content, document.id]);
 
-  const handlePropose = useCallback(async () => {
+  const handlePropose = useCallback(() => {
     if (!canEdit) return;
-    setProposing(true);
-    try {
-      const patch = createPatch(document.contentSnapshot, content);
-      const res = await fetch("/api/proposals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: document.workspaceId,
-          documentId: document.id,
-          baseVersionId: document.currentVersionId,
-          patch: JSON.stringify(patch),
-          proposalType: "content_update",
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to create proposal");
-        return;
-      }
-      toast.success("Proposal submitted! Collaborators will be notified.");
-    } finally {
-      setProposing(false);
-    }
-  }, [canEdit, document, content]);
+    const patch = createPatch(document.contentSnapshot, content);
+    submitProposal({
+      workspaceId: document.workspaceId,
+      documentId: document.id,
+      baseVersionId: document.currentVersionId,
+      patch: JSON.stringify(patch),
+      proposalType: "content_update",
+    });
+  }, [canEdit, submitProposal, document, content]);
 
   const currentContent = previewVersion ? previewVersion.contentSnapshot : content;
 

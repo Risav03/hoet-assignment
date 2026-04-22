@@ -1,14 +1,12 @@
 "use client";
-import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Clock, RotateCcw, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
 import { clearDraft } from "@/components/editor/draft-auto-save";
 import { cn } from "@/lib/utils";
+import { useRestoreVersion } from "@/lib/hooks/use-document-mutations";
 
 interface Version {
   id: string;
@@ -35,28 +33,16 @@ export function VersionTimeline({
   onPreview,
   onRestored,
 }: VersionTimelineProps) {
-  const router = useRouter();
-  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const { mutate: restoreVersion, isPending: restoring, variables: restoringId } =
+    useRestoreVersion(documentId);
 
-  async function handleRestore(versionId: string) {
-    setRestoringId(versionId);
-    try {
-      const res = await fetch(
-        `/api/documents/${documentId}/versions/${versionId}/restore`,
-        { method: "POST" }
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to restore version");
-        return;
-      }
-      await clearDraft(documentId);
-      onRestored?.();
-      toast.success("Version restored! A new version was created.");
-      router.refresh();
-    } finally {
-      setRestoringId(null);
-    }
+  function handleRestore(versionId: string) {
+    restoreVersion(versionId, {
+      onSuccess: async () => {
+        await clearDraft(documentId);
+        onRestored?.();
+      },
+    });
   }
 
   if (versions.length === 0) {
@@ -140,13 +126,13 @@ export function VersionTimeline({
                     size="sm"
                     variant="ghost"
                     className="h-[26px] px-2 text-[11px] text-muted-foreground shrink-0"
-                    disabled={restoringId === version.id}
+                    disabled={restoring && restoringId === version.id}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleRestore(version.id);
                     }}
                   >
-                    {restoringId === version.id ? (
+                    {restoring && restoringId === version.id ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
                       <RotateCcw className="w-3 h-3" />
