@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
+import { ProgressBar } from "@/components/providers/progress-bar";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -40,6 +42,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <AuthSessionProvider>
           <TooltipProvider>
+            <Suspense fallback={null}>
+              <ProgressBar />
+            </Suspense>
             {children}
             <Toaster richColors position="top-right" />
           </TooltipProvider>

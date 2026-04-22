@@ -84,19 +84,6 @@ export default async function DashboardPage() {
             </Link>
           ))}
 
-          {/* Dashed new workspace tile */}
-          <CreateWorkspaceDialog
-            trigger={
-              <div className="new-ws-tile flex flex-col items-center justify-center cursor-pointer border-[1.5px] border-dashed border-border rounded-xl min-h-[140px] bg-secondary/60">
-                <div className="flex items-center justify-center mb-2 w-9 h-9 rounded-[10px] bg-accent">
-                  <Plus className="w-[18px] h-[18px] text-primary" />
-                </div>
-                <span className="text-[13px] font-semibold text-muted-foreground">
-                  New workspace
-                </span>
-              </div>
-            }
-          />
         </div>
       )}
     </div>

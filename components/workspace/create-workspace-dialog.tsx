@@ -68,7 +68,7 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
       ) : (
         <DialogTrigger className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground border-none rounded-lg px-3.5 py-[7px] text-[13px] font-semibold cursor-pointer shadow-[0_1px_2px_rgba(79,70,229,.25)] transition-colors hover:bg-primary-hover">
           <Plus className="w-3.5 h-3.5" />
-          New workspace
+          Create
         </DialogTrigger>
       )}
       <DialogContent>

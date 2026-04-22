@@ -5,8 +5,6 @@ import { redirect } from "next/navigation";
 import { Zap, GitPullRequest, Radio, Clock, Bot, Shield } from "lucide-react";
 
 export default async function LandingPage() {
-  const session = await auth();
-  if (session?.user) redirect("/dashboard");
 
   const features = [
     {
