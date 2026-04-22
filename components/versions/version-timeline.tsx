@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Clock, RotateCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { clearDraft } from "@/components/editor/draft-auto-save";
 
 interface Version {
   id: string;
@@ -22,6 +23,7 @@ interface VersionTimelineProps {
   currentVersionId?: string | null;
   canRestore: boolean;
   onPreview?: (version: Version) => void;
+  onRestored?: () => void;
 }
 
 export function VersionTimeline({
@@ -30,6 +32,7 @@ export function VersionTimeline({
   currentVersionId,
   canRestore,
   onPreview,
+  onRestored,
 }: VersionTimelineProps) {
   const router = useRouter();
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -46,6 +49,10 @@ export function VersionTimeline({
         toast.error(err.error ?? "Failed to restore version");
         return;
       }
+      // Drop the stale local draft so the restored content isn't
+      // immediately overwritten by an older unsaved draft.
+      await clearDraft(documentId);
+      onRestored?.();
       toast.success("Version restored! A new version was created.");
       router.refresh();
     } finally {

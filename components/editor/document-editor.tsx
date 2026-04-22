@@ -104,6 +104,11 @@ export function DocumentEditor({
           },
         });
         setContent(draft);
+      } else {
+        // No draft (or draft matches) — keep the editor in sync with the
+        // server snapshot. This matters after a restore/refresh where the
+        // snapshot changes but local `content` state would otherwise stay stale.
+        setContent(document.contentSnapshot);
       }
     });
   }, [document.id, document.contentSnapshot]);
@@ -288,28 +293,69 @@ export function DocumentEditor({
           style={{ background: "#ffffff", padding: "40px 60px" }}
         >
           {view === "history" ? (
-            <div style={{ maxWidth: 560 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b", marginBottom: 16 }}>
-                Version History
-              </h2>
-              {previewVersion && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mb-4"
-                  onClick={() => setPreviewVersion(null)}
+            previewVersion ? (
+              <div style={{ maxWidth: 680 }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b" }}>
+                      Preview
+                    </h2>
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{
+                        background: "#fffbeb",
+                        color: "#92400e",
+                        border: "1px solid #fde68a",
+                      }}
+                    >
+                      v{previewVersion.versionNumber}
+                    </span>
+                    <span style={{ fontSize: 12, color: "#71717a" }}>
+                      by {previewVersion.createdBy.name}
+                      {" · "}
+                      {format(new Date(previewVersion.createdAt), "MMM d, yyyy HH:mm")}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewVersion(null)}
+                  >
+                    Back to history
+                  </Button>
+                </div>
+                <div
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 800,
+                    color: "#18181b",
+                    marginBottom: 24,
+                  }}
                 >
-                  Exit preview
-                </Button>
-              )}
-              <VersionTimeline
-                versions={versions}
-                documentId={document.id}
-                currentVersionId={document.currentVersionId}
-                canRestore={canEdit}
-                onPreview={setPreviewVersion}
-              />
-            </div>
+                  {title}
+                </div>
+                <RichTextEditor
+                  content={previewVersion.contentSnapshot}
+                  onChange={() => {}}
+                  editable={false}
+                  className="min-h-[400px]"
+                />
+              </div>
+            ) : (
+              <div style={{ maxWidth: 560 }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: "#18181b", marginBottom: 16 }}>
+                  Version History
+                </h2>
+                <VersionTimeline
+                  versions={versions}
+                  documentId={document.id}
+                  currentVersionId={document.currentVersionId}
+                  canRestore={canEdit}
+                  onPreview={setPreviewVersion}
+                  onRestored={() => setPreviewVersion(null)}
+                />
+              </div>
+            )
           ) : (
             <div style={{ maxWidth: 680 }}>
               {/* Title */}

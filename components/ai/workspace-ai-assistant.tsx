@@ -48,8 +48,8 @@ function MessageContent({
       <Link
         key={match.index}
         href={`/workspaces/${workspaceSlug}/documents/${docId}`}
-        className="underline underline-offset-2 hover:opacity-80"
-        style={{ color: "#818cf8" }}
+        className="underline underline-offset-2 hover:opacity-80 font-bold"
+        style={{ color: "#ffffff" }}
       >
         @{title}
       </Link>
