@@ -33,7 +33,7 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Workspace {
   id: string;
@@ -57,6 +57,33 @@ function NavContent({
   const currentWorkspace = workspaces.find((w) => w.slug === workspaceSlug);
 
   const base = workspaceSlug ? `/workspaces/${workspaceSlug}` : "";
+
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (!currentWorkspace?.id) {
+      setPendingCount(0);
+      return;
+    }
+
+    const workspaceId = currentWorkspace.id;
+
+    async function fetchCount() {
+      try {
+        const res = await fetch(`/api/proposals/pending-count?workspaceId=${workspaceId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPendingCount(data.count ?? 0);
+        }
+      } catch {
+        // silently ignore poll errors
+      }
+    }
+
+    fetchCount();
+    const interval = setInterval(fetchCount, 15_000);
+    return () => clearInterval(interval);
+  }, [currentWorkspace?.id]);
 
   const globalNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -177,6 +204,11 @@ function NavContent({
                       )}
                     />
                     {item.label}
+                    {item.label === "Proposals" && pendingCount > 0 && (
+                      <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1">
+                        {pendingCount > 99 ? "99+" : pendingCount}
+                      </span>
+                    )}
                   </span>
                 </Link>
               ))}

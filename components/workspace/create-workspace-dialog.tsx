@@ -52,7 +52,7 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
       toast.success("Workspace created!");
       setOpen(false);
       reset();
-      router.push(`/workspaces/${json.id}`);
+      router.push(`/workspaces/${json.slug}`);
       router.refresh();
     } finally {
       setLoading(false);
