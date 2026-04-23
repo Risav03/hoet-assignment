@@ -10,10 +10,12 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
     exclude: ["tests/e2e/**", "node_modules/**"],
+    pool: "vmForks",
   },
   resolve: {
     alias: {
       "@": resolve(__dirname, "."),
+      "server-only": resolve(__dirname, "tests/__mocks__/server-only.ts"),
     },
   },
 });

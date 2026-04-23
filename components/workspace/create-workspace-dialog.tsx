@@ -1,5 +1,5 @@
 "use client";
-import React, { cloneElement, isValidElement, useState } from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createWorkspaceSchema, type CreateWorkspaceInput } from "@/lib/validation";
@@ -19,11 +19,19 @@ import { useCreateWorkspace } from "@/lib/hooks/use-workspace-mutations";
 
 interface CreateWorkspaceDialogProps {
   trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CreateWorkspaceDialog({
+  trigger,
+  open,
+  onOpenChange,
+}: CreateWorkspaceDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const { mutate: createWorkspace, isPending: loading } = useCreateWorkspace();
+  const dialogOpen = open ?? internalOpen;
+  const setDialogOpen = onOpenChange ?? setInternalOpen;
 
   const {
     register,
@@ -37,24 +45,22 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
   function onSubmit(data: CreateWorkspaceInput) {
     createWorkspace(data, {
       onSuccess: () => {
-        setOpen(false);
+        setDialogOpen(false);
         reset();
       },
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {isValidElement(trigger) ? (
-        cloneElement(trigger as React.ReactElement<{ onClick?: () => void }>, {
-          onClick: () => setOpen(true),
-        })
-      ) : (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {trigger === undefined ? (
         <DialogTrigger className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground border-none rounded-lg px-3.5 py-[7px] text-[13px] font-semibold cursor-pointer shadow-[0_1px_2px_rgba(79,70,229,.25)] transition-colors hover:bg-primary-hover">
           <Plus className="w-3.5 h-3.5" />
           Create
         </DialogTrigger>
-      )}
+      ) : trigger ? (
+        trigger
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create workspace</DialogTitle>
@@ -78,7 +84,7 @@ export function CreateWorkspaceDialog({ trigger }: CreateWorkspaceDialogProps) {
             )}
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
             <Button

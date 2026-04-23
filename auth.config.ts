@@ -19,7 +19,6 @@ export const authConfig: NextAuthConfig = {
         "/dashboard",
         "/workspaces",
         "/documents",
-        "/proposals",
         "/ai-assistant",
         "/settings",
       ];

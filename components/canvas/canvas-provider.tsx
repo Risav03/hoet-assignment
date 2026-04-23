@@ -8,6 +8,7 @@ import { useCanvasStore } from "@/lib/store/canvas-store";
 import { CanvasBoard } from "./canvas-board";
 import type { SSEMessage } from "@/lib/hooks/use-sse";
 import type { PresenceData } from "@/lib/types/canvas";
+import type { CanvasSyncStatus } from "@/lib/hooks/use-canvas-sync-engine";
 
 interface CanvasProviderProps {
   boardId: string;
@@ -18,7 +19,7 @@ export function CanvasProvider({ boardId, workspaceId }: CanvasProviderProps) {
   const { data: board, isLoading, error } = useBoardData(boardId);
   const reset = useCanvasStore((s) => s.reset);
 
-  useCanvasSyncEngine(boardId);
+  const syncStatus: CanvasSyncStatus = useCanvasSyncEngine(boardId);
 
   const { handleSSEMessage } = useCanvasSSEHandler(boardId);
   const { handleRemotePresence } = useCanvasPresence(boardId);
@@ -91,5 +92,5 @@ export function CanvasProvider({ boardId, workspaceId }: CanvasProviderProps) {
     );
   }
 
-  return <CanvasBoard boardId={boardId} workspaceId={workspaceId} />;
+  return <CanvasBoard boardId={boardId} workspaceId={workspaceId} syncStatus={syncStatus} />;
 }

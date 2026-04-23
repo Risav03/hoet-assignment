@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useCanvasStore } from "@/lib/store/canvas-store";
 import {
@@ -7,6 +7,7 @@ import {
   markOpCommitted,
   markOpRejected,
 } from "@/lib/sync/canvas-engine";
+import { getLocalDB } from "@/lib/db/local";
 import { useNetworkStatus } from "./use-network-status";
 import type { SSEMessage } from "./use-sse";
 import type { CanvasOp, ConflictInfo, NodeMover, CanvasNode, CanvasEdge } from "@/lib/types/canvas";
@@ -15,21 +16,52 @@ const BASE_INTERVAL = 1_000;
 const RETRY_INTERVAL = 3_000;
 const MOVER_DISPLAY_MS = 3_000;
 
-export function useCanvasSyncEngine(boardId: string | null) {
+export interface CanvasSyncStatus {
+  isOnline: boolean;
+  isSyncing: boolean;
+  pendingCount: number;
+}
+
+export function useCanvasSyncEngine(boardId: string | null): CanvasSyncStatus {
   const { data: session } = useSession();
   const isOnline = useNetworkStatus();
   const retryCountRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const refreshPendingCount = useCallback(async () => {
+    if (!boardId) return;
+    try {
+      const db = getLocalDB();
+      const count = await db.boardOps
+        .where("status")
+        .anyOf(["pending", "syncing"])
+        .filter((op) => op.boardId === boardId)
+        .count();
+      setPendingCount(count);
+    } catch {
+      // non-fatal
+    }
+  }, [boardId]);
 
   const sync = useCallback(async () => {
     if (!boardId || !session?.user?.id || !isOnline) return;
+    setIsSyncing(true);
     try {
       await runCanvasSyncEngine(boardId);
       retryCountRef.current = 0;
     } catch {
       retryCountRef.current = 1;
+    } finally {
+      setIsSyncing(false);
+      await refreshPendingCount();
     }
-  }, [boardId, session?.user?.id, isOnline]);
+  }, [boardId, session?.user?.id, isOnline, refreshPendingCount]);
+
+  useEffect(() => {
+    void refreshPendingCount();
+  }, [refreshPendingCount]);
 
   useEffect(() => {
     if (!isOnline || !boardId) return;
@@ -49,6 +81,8 @@ export function useCanvasSyncEngine(boardId: string | null) {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [isOnline, boardId, sync]);
+
+  return { isOnline, isSyncing, pendingCount };
 }
 
 export function useCanvasSSEHandler(boardId: string | null) {

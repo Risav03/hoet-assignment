@@ -33,6 +33,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useState } from "react";
+import { CreateWorkspaceDialog } from "@/components/workspace/create-workspace-dialog";
 
 interface Workspace {
   id: string;
@@ -50,6 +51,7 @@ function NavContent({
   workspaces,
   onNavClick,
 }: SidebarProps & { onNavClick?: () => void }) {
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
   const pathname = usePathname();
   const workspaceSlugMatch = pathname.match(/^\/workspaces\/([^/]+)/);
   const workspaceSlug = workspaceSlugMatch?.[1];
@@ -116,7 +118,7 @@ function NavContent({
             {workspaces.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem
               onClick={() => {
-                window.location.href = "/dashboard?action=new-workspace";
+                setCreateWorkspaceOpen(true);
               }}
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -124,6 +126,11 @@ function NavContent({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <CreateWorkspaceDialog
+          trigger={null}
+          open={createWorkspaceOpen}
+          onOpenChange={setCreateWorkspaceOpen}
+        />
       </div>
 
       <ScrollArea className="flex-1 py-2">

@@ -34,8 +34,8 @@ export function useSaveDocument(documentId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { title: string; content: string }) => {
-      const res = await fetch(`/api/documents/${documentId}`, {
+    mutationFn: async (data: { title: string; content?: string }) => {
+      const res = await fetch(`/api/docs/${documentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -62,16 +62,17 @@ export function useRestoreVersion(documentId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (versionId: string) => {
-      const res = await fetch(
-        `/api/documents/${documentId}/versions/${versionId}/restore`,
-        { method: "POST" }
-      );
+    mutationFn: async (targetRev: number) => {
+      const res = await fetch(`/api/docs/${documentId}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetRev }),
+      });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error ?? "Failed to restore version");
       }
-      return versionId;
+      return targetRev;
     },
     onSuccess: () => {
       toast.success("Version restored! A new version was created.");

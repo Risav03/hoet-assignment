@@ -14,11 +14,14 @@ import { useCanvasDispatch } from "@/lib/hooks/use-canvas";
 import { useCanvasPresence } from "@/lib/hooks/use-canvas-presence";
 import type { CanvasNode, CanvasEdge, NodeMover } from "@/lib/types/canvas";
 import type { VersionSummary } from "./version-history-panel";
+import type { CanvasSyncStatus } from "@/lib/hooks/use-canvas-sync-engine";
 import { toast } from "sonner";
+import { WifiOff, Loader2, CheckCircle2, Clock3 } from "lucide-react";
 
 interface CanvasBoardProps {
   boardId: string;
   workspaceId: string;
+  syncStatus?: CanvasSyncStatus;
 }
 
 const ZOOM_FACTOR = 1.05;
@@ -35,7 +38,37 @@ const NODE_COLORS = [
   "#ede9fe", "#ffedd5", "#f0fdf4", "#e0f2fe",
 ];
 
-export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
+function CanvasSyncBadge({ syncStatus }: { syncStatus?: CanvasSyncStatus }) {
+  if (!syncStatus) return null;
+  const { isOnline, isSyncing, pendingCount } = syncStatus;
+
+  if (!isOnline) return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+      <WifiOff className="w-3 h-3" />
+      Offline
+    </span>
+  );
+  if (isSyncing) return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+      <Loader2 className="w-3 h-3 animate-spin" />
+      Syncing
+    </span>
+  );
+  if (pendingCount > 0) return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-muted-foreground border border-border">
+      <Clock3 className="w-3 h-3" />
+      {pendingCount} pending
+    </span>
+  );
+  return (
+    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 border border-green-200 dark:border-green-800">
+      <CheckCircle2 className="w-3 h-3" />
+      Saved
+    </span>
+  );
+}
+
+export function CanvasBoard({ boardId, workspaceId, syncStatus }: CanvasBoardProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -415,6 +448,11 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
         historyOpen={showVersionPanel}
         onToggleHistory={() => setShowVersionPanel((v) => !v)}
       />
+
+      {/* Sync status badge — bottom-right corner */}
+      <div className="absolute bottom-4 right-4 z-10 pointer-events-none">
+        <CanvasSyncBadge syncStatus={syncStatus} />
+      </div>
 
       {connectMode && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 bg-blue-600 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg">
