@@ -247,6 +247,20 @@ export function useYjsSync({
     }
   });
 
+  // ── Step 6: re-sync on SSE reconnect ────────────────────────────────────────
+  // The server emits a `connected` event on every new SSE connection, including
+  // reconnects after Vercel drops the stream at its function timeout (~300s).
+  // We skip the first fire (initial mount) since Step 1 already covers that,
+  // and re-fetch the full server state on every subsequent reconnect so that
+  // any Yjs updates broadcast during the gap are not permanently lost.
+  const connectedCountRef = useRef(0);
+  useDocEventSource(docId, "connected", () => {
+    connectedCountRef.current += 1;
+    if (connectedCountRef.current === 1) return; // first connect covered by initial fetch
+    if (!ydoc) return;
+    void fetchAndApplyServerUpdates(docId, ydoc);
+  });
+
   // ── Derive status label ──────────────────────────────────────────────────────
   const status: YjsSyncStatus = (() => {
     if (isOffline) return "offline";
