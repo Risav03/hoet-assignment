@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { applyBoardOp, getBoardById } from "@/lib/dal/board";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent, updateWorkspaceState } from "@/lib/sse/redis-emitter";
+import { scheduleFlush } from "@/lib/workspace-flush";
 import { z } from "zod";
 import { ZodError } from "zod";
 import type { CanvasOp } from "@/lib/types/canvas";
@@ -66,7 +67,13 @@ export async function POST(
         );
 
         if (result.applied) {
-          emitSSEEvent(board.workspaceId, {
+          const appliedAt = new Date().toISOString();
+
+          await updateWorkspaceState(board.workspaceId, {
+            lastOp: { boardId, operationId, type: op.type, authorId, appliedAt },
+          });
+
+          await emitSSEEvent(board.workspaceId, {
             type: "canvas_op_applied",
             payload: {
               boardId,
@@ -75,12 +82,14 @@ export async function POST(
               authorId,
               authorName,
               authorColor,
-              appliedAt: new Date().toISOString(),
+              appliedAt,
             },
           });
+
+          scheduleFlush(board.workspaceId);
           results.push({ operationId, status: "applied" });
         } else {
-          emitSSEEvent(board.workspaceId, {
+          await emitSSEEvent(board.workspaceId, {
             type: "canvas_conflict_resolved",
             payload: {
               boardId,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getBoardById } from "@/lib/dal/board";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent } from "@/lib/sse/redis-emitter";
 import { z } from "zod";
 import { ZodError } from "zod";
 
@@ -29,7 +29,7 @@ export async function POST(
     const body = await req.json();
     const { x, y, name, color, draggingNodeId } = presenceSchema.parse(body);
 
-    emitSSEEvent(board.workspaceId, {
+    await emitSSEEvent(board.workspaceId, {
       type: "canvas_presence",
       payload: {
         boardId,

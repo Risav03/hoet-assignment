@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { getBoardWithState, updateBoard } from "@/lib/dal/board";
 import { z } from "zod";
 import { ZodError } from "zod";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent } from "@/lib/sse/redis-emitter";
 
 const patchBoardSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -45,7 +45,7 @@ export async function PATCH(
     const data = patchBoardSchema.parse(body);
     const board = await updateBoard(id, session.user.id, data);
 
-    emitSSEEvent(board.workspaceId, {
+    await emitSSEEvent(board.workspaceId, {
       type: "board_updated",
       payload: { boardId: board.id, ...data },
     });

@@ -4,7 +4,7 @@ import { getWorkspaceMembers, requireWorkspaceMember } from "@/lib/dal/workspace
 import { db } from "@/lib/db";
 import { inviteMemberSchema } from "@/lib/validation";
 import { ZodError } from "zod";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent } from "@/lib/sse/redis-emitter";
 
 export async function GET(
   _req: Request,
@@ -67,7 +67,7 @@ export async function POST(
       },
     });
 
-    emitSSEEvent(id, { type: "member_invited", payload: { memberId: invitee.id, role: data.role } });
+    await emitSSEEvent(id, { type: "member_invited", payload: { memberId: invitee.id, role: data.role } });
 
     return NextResponse.json(member, { status: 201 });
   } catch (err) {

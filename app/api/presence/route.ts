@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent } from "@/lib/sse/redis-emitter";
 import { getWorkspaceMember } from "@/lib/dal/workspace";
 import { z } from "zod";
 
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     const member = await getWorkspaceMember(workspaceId, session.user.id);
     if (!member) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    emitSSEEvent(workspaceId, {
+    await emitSSEEvent(workspaceId, {
       type: "canvas_presence",
       payload: {
         boardId,

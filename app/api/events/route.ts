@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
-import { subscribeToWorkspace, type SSEEvent } from "@/lib/sse/emitter";
+import { createSubscriber } from "@/lib/redis";
+import { workspaceChannel } from "@/lib/sse/redis-emitter";
 import { getWorkspaceMember } from "@/lib/dal/workspace";
 
 export const dynamic = "force-dynamic";
@@ -24,14 +25,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not a workspace member" }, { status: 403 });
   }
 
+  // Resume counter from standard EventSource Last-Event-ID header.
   const lastEventId = req.headers.get("last-event-id");
   let eventCounter = lastEventId ? parseInt(lastEventId, 10) : 0;
+  if (!Number.isFinite(eventCounter)) eventCounter = 0;
 
+  const channel = workspaceChannel(workspaceId);
   const encoder = new TextEncoder();
-  let cleanup: (() => void) | null = null;
+
+  // One dedicated subscriber per request so `unsubscribe()` only affects this stream
+  // and so ioredis's subscriber-mode restrictions don't leak across requests.
+  const subscriber = createSubscriber();
+
+  let cleanup: (() => Promise<void>) | null = null;
 
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(": heartbeat\n\n"));
@@ -40,19 +49,31 @@ export async function GET(req: Request) {
         }
       }, 30_000);
 
-      const listener = (event: SSEEvent) => {
+      const messageHandler = (ch: string, message: string) => {
+        if (ch !== channel) return;
         try {
+          const event = JSON.parse(message) as { type: string; payload: unknown };
           eventCounter += 1;
           const data = JSON.stringify({ ...event, workspaceId });
           controller.enqueue(
             encoder.encode(`id: ${eventCounter}\nevent: ${event.type}\ndata: ${data}\n\n`)
           );
         } catch {
-          // stream closed
+          // swallow bad payloads / closed stream
         }
       };
 
-      const unsubscribe = subscribeToWorkspace(workspaceId, listener);
+      subscriber.on("message", messageHandler);
+
+      try {
+        await subscriber.subscribe(channel);
+      } catch (err) {
+        console.error("[events] subscribe failed", err);
+        clearInterval(heartbeat);
+        controller.close();
+        subscriber.disconnect();
+        return;
+      }
 
       controller.enqueue(
         encoder.encode(
@@ -60,13 +81,19 @@ export async function GET(req: Request) {
         )
       );
 
-      cleanup = () => {
+      cleanup = async () => {
         clearInterval(heartbeat);
-        unsubscribe();
+        subscriber.off("message", messageHandler);
+        try {
+          await subscriber.unsubscribe(channel);
+        } catch {
+          // ignore
+        }
+        subscriber.disconnect();
       };
     },
-    cancel() {
-      cleanup?.();
+    async cancel() {
+      await cleanup?.();
     },
   });
 

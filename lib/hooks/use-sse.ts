@@ -21,7 +21,6 @@ export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions
   const isOnline = useNetworkStatus();
   const esRef = useRef<EventSource | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const lastEventIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollSinceRef = useRef<string>(new Date().toISOString());
   const onMessageRef = useRef(onMessage);
@@ -74,8 +73,8 @@ export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions
 
     const url = new URL(`/api/events`, window.location.origin);
     url.searchParams.set("workspaceId", workspaceId);
-    if (lastEventIdRef.current) url.searchParams.set("lastEventId", lastEventIdRef.current);
 
+    // EventSource auto-sends `Last-Event-ID` header on reconnect; no need to pass it manually.
     const es = new EventSource(url.toString());
     esRef.current = es;
 
@@ -85,7 +84,6 @@ export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions
     });
 
     const handleMessage = (e: MessageEvent) => {
-      if (e.lastEventId) lastEventIdRef.current = e.lastEventId;
       try {
         const data = JSON.parse(e.data) as SSEMessage;
         onMessageRef.current(data);

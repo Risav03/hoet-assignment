@@ -4,7 +4,7 @@ import { requireWorkspaceMember } from "@/lib/dal/workspace";
 import { db } from "@/lib/db";
 import { updateMemberRoleSchema } from "@/lib/validation";
 import { ZodError } from "zod";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent } from "@/lib/sse/redis-emitter";
 
 export async function PATCH(
   req: Request,
@@ -40,7 +40,7 @@ export async function PATCH(
       },
     });
 
-    emitSSEEvent(id, { type: "member_role_updated", payload: { userId: uid, newRole: data.role } });
+    await emitSSEEvent(id, { type: "member_role_updated", payload: { userId: uid, newRole: data.role } });
 
     return NextResponse.json(member);
   } catch (err) {

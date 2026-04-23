@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { getBoardsByWorkspace, createBoard } from "@/lib/dal/board";
 import { z } from "zod";
 import { ZodError } from "zod";
-import { emitSSEEvent } from "@/lib/sse/emitter";
+import { emitSSEEvent } from "@/lib/sse/redis-emitter";
 
 const createBoardSchema = z.object({
   workspaceId: z.string().min(1),
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const { workspaceId, title } = createBoardSchema.parse(body);
     const board = await createBoard(workspaceId, session.user.id, title);
 
-    emitSSEEvent(workspaceId, {
+    await emitSSEEvent(workspaceId, {
       type: "board_created",
       payload: { boardId: board.id, title, authorId: session.user.id },
     });

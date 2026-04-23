@@ -373,6 +373,7 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
         scaleY={stageScale}
         draggable={!connectMode}
         onDragEnd={(e) => {
+          if (e.target !== stageRef.current) return;
           setStagePos({ x: e.target.x(), y: e.target.y() });
         }}
         onWheel={handleWheel}
