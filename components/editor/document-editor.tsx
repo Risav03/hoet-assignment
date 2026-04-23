@@ -157,7 +157,7 @@ export function DocumentEditor({
         // Flush to server immediately after storing locally — don't wait for
         // the 10-second interval so a refresh doesn't lose recent edits.
         syncRef.current();
-      }, 300);
+      }, 2000);
     },
   });
 
