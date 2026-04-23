@@ -217,6 +217,8 @@ model Document {
   ops         DocumentOp[]
   snapshots   DocumentSnapshot[]
   conflicts   DocumentConflict[]
+  yjsUpdates  YjsUpdate[]
+  yjsSnapshot YjsSnapshot?
 
   @@index([workspaceId])
   @@index([workspaceId, isArchived])
@@ -264,4 +266,24 @@ model DocumentConflict {
 enum DocumentConflictStatus {
   PENDING
   RESOLVED
+}
+
+// ── Yjs CRDT models ────────────────────────────────────────────────────────────
+
+model YjsUpdate {
+  id         String   @id @default(cuid())
+  documentId String
+  update     Bytes
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+}
+
+model YjsSnapshot {
+  id         String   @id @default(cuid())
+  documentId String   @unique
+  state      Bytes
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }

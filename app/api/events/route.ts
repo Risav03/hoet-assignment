@@ -1,8 +1,9 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import { createSubscriber } from "@/lib/redis";
-import { workspaceChannel } from "@/lib/sse/redis-emitter";
+import { workspaceChannel, docChannel } from "@/lib/sse/redis-emitter";
 import { getWorkspaceMember } from "@/lib/dal/workspace";
+import { requireDocumentMember } from "@/lib/dal/document";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,14 +16,31 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const workspaceId = url.searchParams.get("workspaceId");
+  const docId = url.searchParams.get("docId");
 
-  if (!workspaceId) {
-    return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+  // At least one of workspaceId or docId is required
+  if (!workspaceId && !docId) {
+    return NextResponse.json({ error: "workspaceId or docId is required" }, { status: 400 });
   }
 
-  const member = await getWorkspaceMember(workspaceId, session.user.id);
-  if (!member) {
-    return NextResponse.json({ error: "Not a workspace member" }, { status: 403 });
+  // Build the list of channels to subscribe to
+  const channels: string[] = [];
+
+  if (workspaceId) {
+    const member = await getWorkspaceMember(workspaceId, session.user.id);
+    if (!member) {
+      return NextResponse.json({ error: "Not a workspace member" }, { status: 403 });
+    }
+    channels.push(workspaceChannel(workspaceId));
+  }
+
+  if (docId) {
+    try {
+      await requireDocumentMember(docId, session.user.id);
+    } catch {
+      return NextResponse.json({ error: "Not a document member" }, { status: 403 });
+    }
+    channels.push(docChannel(docId));
   }
 
   // Resume counter from standard EventSource Last-Event-ID header.
@@ -30,7 +48,6 @@ export async function GET(req: Request) {
   let eventCounter = lastEventId ? parseInt(lastEventId, 10) : 0;
   if (!Number.isFinite(eventCounter)) eventCounter = 0;
 
-  const channel = workspaceChannel(workspaceId);
   const encoder = new TextEncoder();
 
   // One dedicated subscriber per request so `unsubscribe()` only affects this stream
@@ -50,11 +67,12 @@ export async function GET(req: Request) {
       }, 30_000);
 
       const messageHandler = (ch: string, message: string) => {
-        if (ch !== channel) return;
+        if (!channels.includes(ch)) return;
         try {
           const event = JSON.parse(message) as { type: string; payload: unknown };
           eventCounter += 1;
-          const data = JSON.stringify({ ...event, workspaceId });
+          const meta = workspaceId ? { workspaceId } : { docId };
+          const data = JSON.stringify({ ...event, ...meta });
           controller.enqueue(
             encoder.encode(`id: ${eventCounter}\nevent: ${event.type}\ndata: ${data}\n\n`)
           );
@@ -66,7 +84,9 @@ export async function GET(req: Request) {
       subscriber.on("message", messageHandler);
 
       try {
-        await subscriber.subscribe(channel);
+        for (const ch of channels) {
+          await subscriber.subscribe(ch);
+        }
       } catch (err) {
         console.error("[events] subscribe failed", err);
         clearInterval(heartbeat);
@@ -75,17 +95,20 @@ export async function GET(req: Request) {
         return;
       }
 
+      const connectedMeta = workspaceId
+        ? { workspaceId, userId: session.user.id }
+        : { docId, userId: session.user.id };
       controller.enqueue(
-        encoder.encode(
-          `event: connected\ndata: ${JSON.stringify({ workspaceId, userId: session.user.id })}\n\n`
-        )
+        encoder.encode(`event: connected\ndata: ${JSON.stringify(connectedMeta)}\n\n`)
       );
 
       cleanup = async () => {
         clearInterval(heartbeat);
         subscriber.off("message", messageHandler);
         try {
-          await subscriber.unsubscribe(channel);
+          for (const ch of channels) {
+            await subscriber.unsubscribe(ch);
+          }
         } catch {
           // ignore
         }

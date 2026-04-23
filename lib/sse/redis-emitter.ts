@@ -9,6 +9,10 @@ export function workspaceChannel(workspaceId: string) {
   return `workspace:${workspaceId}`;
 }
 
+export function docChannel(docId: string) {
+  return `doc:${docId}`;
+}
+
 export function workspaceStateKey(workspaceId: string) {
   return `workspace:${workspaceId}:state`;
 }
@@ -24,6 +28,26 @@ export async function emitSSEEvent(workspaceId: string, event: SSEEvent): Promis
     await pub.publish(workspaceChannel(workspaceId), JSON.stringify(event));
   } catch (err) {
     console.error("[redis-emitter] publish failed", err);
+  }
+}
+
+/**
+ * Broadcast a Yjs binary update to every SSE client subscribed to a doc channel.
+ *
+ * `base64Update` is the base64-encoded Uint8Array produced by `Y.encodeStateAsUpdate`
+ * or a delta update.  Clients decode it with `base64ToUint8` before calling
+ * `Y.applyUpdate`.
+ *
+ * Safe to `await` — failures are logged but never thrown.
+ */
+export async function emitDocYjsUpdate(docId: string, base64Update: string): Promise<void> {
+  try {
+    await pub.publish(
+      docChannel(docId),
+      JSON.stringify({ type: "yjs_update", payload: { update: base64Update } })
+    );
+  } catch (err) {
+    console.error("[redis-emitter] doc publish failed", err);
   }
 }
 

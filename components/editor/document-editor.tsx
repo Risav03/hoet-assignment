@@ -2,14 +2,17 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import type { Content, Editor } from "@tiptap/core";
+import { generateHTML } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
-import { applyLocalChange, cacheDocSnapshot } from "@/lib/sync/doc-engine";
-import { useDocSyncEngine } from "@/lib/hooks/use-doc-sync-engine";
-import { ConflictResolver } from "./conflict-resolver";
+import Collaboration from "@tiptap/extension-collaboration";
+import * as Y from "yjs";
+import { createYDoc, destroyYDoc } from "@/lib/yjs/doc";
+import { useYjsSync } from "@/lib/hooks/use-yjs-sync";
+import { getLocalDB } from "@/lib/db/local";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,7 +31,6 @@ import {
   PanelRight,
   WifiOff,
   Loader2,
-  AlertTriangle,
   CheckCircle2,
   Clock3,
   Bold,
@@ -50,7 +52,7 @@ import {
 import Link from "next/link";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import type { DocMeta, DocConflict } from "@/lib/types/document";
+import type { DocMeta } from "@/lib/types/document";
 
 interface VersionEntry {
   id: string;
@@ -82,88 +84,111 @@ export function DocumentEditor({
   const [view, setView] = useState<EditorView>("edit");
   const [previewContent, setPreviewContent] = useState<unknown | null>(null);
   const [previewRev, setPreviewRev] = useState<number | null>(null);
-  const [showConflicts, setShowConflicts] = useState(false);
-  const [resolvedConflicts, setResolvedConflicts] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
+  const [ydocReady, setYdocReady] = useState(false);
+  // Live versions list — starts from SSR prop, refreshed whenever the history
+  // tab is opened or a new snapshot is confirmed by the server.
+  const [liveVersions, setLiveVersions] = useState(versions);
+  const [liveCurrentRev, setLiveCurrentRev] = useState(document.currentRev);
 
-  // Refs for JSON patch diffing
-  const prevJsonRef = useRef<unknown>(initialContent);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Yjs document — created once per document, destroyed on unmount
+  const ydocHandleRef = useRef<ReturnType<typeof createYDoc> | null>(null);
+  const ydocRef = useRef<Y.Doc | null>(null);
 
-  // Sync engine
-  const { isSyncing, isOffline, pendingCount, conflicts, sync } = useDocSyncEngine({
-    docId: document.id,
-    onConflict: (incoming) => {
-      const newOnes = incoming.filter((c) => !resolvedConflicts.has(c.id));
-      if (newOnes.length > 0) setShowConflicts(true);
-    },
-  });
-
-  const activeConflicts = conflicts.filter((c) => !resolvedConflicts.has(c.id));
-
-  // Keep the syncRef current so the editor onUpdate closure can always call it
   useEffect(() => {
-    syncRef.current = sync;
-  }, [sync]);
+    const handle = createYDoc(document.id);
+    ydocHandleRef.current = handle;
+    ydocRef.current = handle.ydoc;
 
-  // Flush to server when the tab goes hidden (user switching tabs or closing)
-  useEffect(() => {
-    function handleVisibilityChange() {
-      if (window.document.visibilityState === "hidden") {
-        sync();
+    // Once IndexedDB has loaded persisted state, mark ready so the editor
+    // can be initialised with the correct content.
+    handle.synced.then(() => setYdocReady(true)).catch(() => setYdocReady(true));
+
+    return () => {
+      void destroyYDoc(handle);
+      ydocHandleRef.current = null;
+      ydocRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document.id]);
+
+  const fetchVersions = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/docs/${document.id}/versions`);
+      if (!res.ok) return;
+      const data = await res.json() as { versions: VersionEntry[]; currentRev: number };
+      setLiveVersions(data.versions);
+      if (typeof data.currentRev === "number") {
+        setLiveCurrentRev(data.currentRev);
       }
+    } catch {
+      // non-fatal — stale list is still usable
     }
-    window.document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => window.document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [sync]);
+  }, [document.id]);
+
+  // Yjs sync engine: outbox flush + SSE ingestion
+  const { isSyncing, isOffline, pendingCount } = useYjsSync({
+    ydoc: ydocRef.current,
+    docId: document.id,
+    onInitialSync: () => {
+      // Nothing extra needed — Collaboration extension reacts to ydoc changes
+    },
+    // Provide current Tiptap JSON so the server can write DocumentSnapshot
+    // entries that keep the history panel up-to-date.
+    getSnapshot: () => editor?.getJSON(),
+    // Refresh the versions list as soon as the server confirms a new snapshot.
+    onSnapshotSaved: fetchVersions,
+  });
 
   // Only render sync-state UI after client mount to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Seed the local IndexedDB snapshot on first load
-  useEffect(() => {
-    cacheDocSnapshot(document.id, document.currentRev, initialContent).catch(() => {});
-  }, [document.id, document.currentRev, initialContent]);
-
-  // Keep a stable ref to sync so onUpdate closure doesn't go stale
-  const syncRef = useRef<() => void>(() => {});
-
-  // Tiptap editor
-  const editor = useEditor({
-    immediatelyRender: false,
-    extensions: [
-      StarterKit,
-      TextStyle,
-      Color,
-      Underline,
-      Placeholder.configure({ placeholder: "Start writing…" }),
-    ],
-    content: jsonToTiptap(initialContent),
-    editable: canEdit && view === "edit",
-    onUpdate: ({ editor }) => {
-      if (!canEdit) return;
-      const nextJson = editor.getJSON();
-
-      // Debounce to avoid per-keystroke DB writes
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(async () => {
-        const prev = prevJsonRef.current;
-        prevJsonRef.current = nextJson;
-        await applyLocalChange(document.id, document.workspaceId, prev, nextJson).catch(
-          (e) => console.error("[doc-editor] applyLocalChange failed", e)
-        );
-        // Flush to server immediately after storing locally — don't wait for
-        // the 10-second interval so a refresh doesn't lose recent edits.
-        syncRef.current();
-      }, 2000);
+  // Tiptap editor — the Collaboration extension binds directly to the Y.Doc
+  // so all edits are automatically captured as Yjs updates.
+  const editor = useEditor(
+    {
+      immediatelyRender: false,
+      extensions: [
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        StarterKit.configure({ history: false } as any),
+        TextStyle,
+        Color,
+        Underline,
+        Placeholder.configure({ placeholder: "Start writing…" }),
+        ...(ydocReady && ydocRef.current
+          ? [
+              Collaboration.configure({
+                document: ydocRef.current,
+                field: "document",
+              }),
+            ]
+          : []),
+      ],
+      editable: canEdit && view === "edit",
     },
-  });
+    [ydocReady]
+  );
 
   useEffect(() => {
     editor?.setEditable(canEdit && view === "edit");
   }, [canEdit, view, editor]);
+
+  // If the Y.Doc has no content yet (brand-new or legacy document), seed it
+  // from the server-side `initialContent` via Tiptap so the Collaboration
+  // extension writes the correct Y.XmlFragment type — never touch the Y.Doc
+  // directly with getText() which would register the wrong type.
+  useEffect(() => {
+    if (!ydocReady || !ydocRef.current || !editor) return;
+
+    // The Collaboration extension binds to a Y.XmlFragment, not Y.Text.
+    const yXml = ydocRef.current.getXmlFragment("document");
+    if (yXml.length === 0 && initialContent) {
+      editor.commands.setContent(jsonToTiptap(initialContent));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ydocReady, editor]);
 
   // Handle title save
   const handleTitleBlur = useCallback(async () => {
@@ -202,32 +227,33 @@ export function DocumentEditor({
         body: JSON.stringify({ targetRev: rev }),
       });
       if (!res.ok) throw new Error();
+
+      // Clear local Yjs state so the fresh page load seeds from the restored
+      // snapshot rather than replaying stale updates over the top of it.
+      try {
+        // 1. Drop all queued outbox entries for this doc
+        const localDb = getLocalDB();
+        await localDb.yUpdates.where({ docId: document.id }).delete();
+
+        // 2. Wipe the IndexedDB persistence store used by y-indexeddb
+        if (ydocHandleRef.current) {
+          await ydocHandleRef.current.persistence.clearData();
+        }
+      } catch {
+        // Non-fatal — page reload is still the right action
+      }
+
       toast.success(`Restored to v${rev}`);
-      router.refresh();
+      window.location.reload();
     } catch {
       toast.error("Failed to restore version");
     }
-  }, [document.id, router]);
-
-  const handleConflictResolved = useCallback((conflictId: string) => {
-    setResolvedConflicts((prev) => new Set([...prev, conflictId]));
-    sync();
-  }, [sync]);
+  }, [document.id]);
 
   const VIEWS: EditorView[] = ["edit", "preview", "history"];
 
-  // Rendered only on client to prevent hydration mismatch
   const SyncBadge = () => {
     if (!mounted) return null;
-    if (activeConflicts.length > 0) return (
-      <button
-        onClick={() => setShowConflicts(true)}
-        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 transition-colors"
-      >
-        <AlertTriangle className="w-3 h-3" />
-        {activeConflicts.length} conflict{activeConflicts.length > 1 ? "s" : ""}
-      </button>
-    );
     if (isOffline) return (
       <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
         <WifiOff className="w-3 h-3" />
@@ -264,8 +290,8 @@ export function DocumentEditor({
           {[
             { label: "Created", value: format(new Date(document.createdAt), "MMM d, yyyy"), icon: Clock },
             { label: "Updated", value: format(new Date(document.updatedAt), "MMM d, yyyy"), icon: FileText },
-            { label: "Revision", value: `v${document.currentRev}`, icon: Clock },
-            { label: "Snapshots", value: String(versions.length), icon: Clock },
+            { label: "Revision", value: `v${liveCurrentRev}`, icon: Clock },
+            { label: "Snapshots", value: String(liveVersions.length), icon: Clock },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">{label}</span>
@@ -279,17 +305,6 @@ export function DocumentEditor({
 
   return (
     <div className="flex flex-col h-[100dvh]">
-      {/* Conflict resolver overlay */}
-      {showConflicts && activeConflicts.length > 0 && (
-        <ConflictResolver
-          docId={document.id}
-          conflicts={activeConflicts}
-          baseContent={prevJsonRef.current}
-          onResolved={handleConflictResolved}
-          onAllResolved={() => setShowConflicts(false)}
-        />
-      )}
-
       {/* Header */}
       <header className="bg-card border-b border-border shrink-0">
         <div className="flex items-center gap-2 px-3 sm:px-6 h-[52px]">
@@ -330,7 +345,9 @@ export function DocumentEditor({
                 key={v}
                 onClick={() => {
                   setView(v);
-                  if (v !== "history") {
+                  if (v === "history") {
+                    void fetchVersions();
+                  } else {
                     setPreviewContent(null);
                     setPreviewRev(null);
                   }
@@ -355,7 +372,7 @@ export function DocumentEditor({
           {view === "history" ? (
             <HistoryPanel
               docId={document.id}
-              versions={versions}
+              versions={liveVersions}
               previewContent={previewContent}
               previewRev={previewRev}
               canRestore={canEdit}
@@ -380,7 +397,14 @@ export function DocumentEditor({
                 {canEdit && view === "edit" && (
                   <EditorToolbar editor={editor} />
                 )}
-                <EditorContent editor={editor} className="flex-1" />
+                {!ydocReady ? (
+                  <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Loading…
+                  </div>
+                ) : (
+                  <EditorContent editor={editor} className="flex-1" />
+                )}
               </div>
             </div>
           )}
@@ -441,7 +465,7 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 px-2.5 py-1.5 border-b border-border bg-muted/40 sticky top-0 z-10">
-      {/* Undo / Redo */}
+      {/* Undo / Redo — provided by Yjs UndoManager via Collaboration extension */}
       <ToolbarButton
         onClick={() => editor.chain().focus().undo().run()}
         disabled={!editor.can().undo()}
@@ -620,7 +644,7 @@ function HistoryPanel({
     <div className="max-w-[560px]">
       <h2 className="text-base font-bold mb-4">Version History</h2>
       {versions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No snapshots yet. They are created automatically every 50 edits.</p>
+        <p className="text-sm text-muted-foreground">No snapshots yet. They are created automatically every 100 edits.</p>
       ) : (
         <div className="space-y-2">
           {versions.map((v) => (
@@ -677,16 +701,13 @@ function jsonToTiptap(content: unknown): Content {
   return "";
 }
 
+const PREVIEW_EXTENSIONS = [StarterKit, Color, TextStyle, Underline];
+
 function jsonToHtml(content: unknown): string {
   if (!content) return "";
-  if (typeof content === "string") return content;
   try {
-    const root = content as { content?: Array<{ type: string; content?: Array<{ text?: string }> }> };
-    return (root.content ?? [])
-      .map((node) =>
-        `<p>${(node.content ?? []).map((n) => n.text ?? "").join("")}</p>`
-      )
-      .join("\n");
+    const json = typeof content === "string" ? JSON.parse(content) : content;
+    return generateHTML(json as Parameters<typeof generateHTML>[0], PREVIEW_EXTENSIONS);
   } catch {
     return "";
   }

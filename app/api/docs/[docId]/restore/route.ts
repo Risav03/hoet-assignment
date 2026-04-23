@@ -78,6 +78,13 @@ export async function POST(
       return { newRev, snapshotId: newSnapshot.id };
     });
 
+    // Wipe the Yjs binary state so clients start fresh and can't push stale
+    // updates on top of the restored content after reload.
+    await Promise.all([
+      db.yjsUpdate.deleteMany({ where: { documentId: docId } }),
+      db.yjsSnapshot.deleteMany({ where: { documentId: docId } }),
+    ]);
+
     return NextResponse.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";

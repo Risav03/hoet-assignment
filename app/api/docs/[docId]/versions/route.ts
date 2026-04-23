@@ -7,6 +7,7 @@ import {
   getOpsBetweenRevs,
 } from "@/lib/dal/document";
 import { replayOps } from "@/lib/sync/doc-merge";
+import { db } from "@/lib/db";
 
 export async function GET(
   req: Request,
@@ -39,14 +40,18 @@ export async function GET(
       return NextResponse.json({ rev: targetRev, content });
     }
 
-    // Otherwise return list of all snapshots (version history)
-    const snapshots = await listSnapshots(docId);
+    // Otherwise return list of all snapshots (version history) + current rev
+    const [snapshots, doc] = await Promise.all([
+      listSnapshots(docId),
+      db.document.findUnique({ where: { id: docId }, select: { currentRev: true } }),
+    ]);
     return NextResponse.json({
       versions: snapshots.map((s) => ({
         id: s.id,
         rev: s.rev,
         createdAt: s.createdAt.toISOString(),
       })),
+      currentRev: doc?.currentRev ?? 0,
     });
   } catch (err) {
     console.error("[docs versions GET]", err);

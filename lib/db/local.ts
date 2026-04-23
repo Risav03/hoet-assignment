@@ -68,6 +68,18 @@ export interface LocalDocOutboxEntry {
   nextRetryAt: string;
 }
 
+// ── Yjs update outbox ──────────────────────────────────────────────────────────
+
+export type YUpdateStatus = "pending" | "sent" | "acked";
+
+export interface LocalYUpdate {
+  id?: number;
+  docId: string;
+  update: Uint8Array;
+  status: YUpdateStatus;
+  createdAt: string;
+}
+
 // ── Legacy stubs (kept for backward compat with editor/sync components) ───────
 
 /** @deprecated Document model removed from DB */
@@ -133,6 +145,8 @@ class CanvasLocalDB extends Dexie {
   docOps!: Table<LocalDocOp, number>;
   docSnapshots!: Table<LocalDocSnapshot, string>;
   docOutbox!: Table<LocalDocOutboxEntry, string>;
+  // Yjs CRDT outbox
+  yUpdates!: Table<LocalYUpdate, number>;
   // Legacy tables (kept so old Dexie migrations don't error)
   documents!: Table<LocalDocument, string>;
   drafts!: Table<LocalDraft, string>;
@@ -156,6 +170,19 @@ class CanvasLocalDB extends Dexie {
       docOps: "++id, opId, docId, status, createdAt",
       docSnapshots: "snapshotId, docId, rev",
       docOutbox: "opId, docId, nextRetryAt",
+      documents: "id, workspaceId, updatedAt, isArchived",
+      drafts: "id, documentId, workspaceId, savedAt",
+      syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
+      proposals: "id, workspaceId, documentId, status, createdAt",
+    });
+    this.version(3).stores({
+      boardOps: "++id, operationId, boardId, workspaceId, status, createdAt",
+      boardSnapshots: "id, workspaceId, snapshotAt",
+      docMeta: "docId, workspaceId, isDirty, updatedAt",
+      docOps: "++id, opId, docId, status, createdAt",
+      docSnapshots: "snapshotId, docId, rev",
+      docOutbox: "opId, docId, nextRetryAt",
+      yUpdates: "++id, docId, status, createdAt",
       documents: "id, workspaceId, updatedAt, isArchived",
       drafts: "id, documentId, workspaceId, savedAt",
       syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
