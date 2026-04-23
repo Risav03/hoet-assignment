@@ -433,13 +433,13 @@ export function DocumentEditor({
               onBack={() => { setPreviewContent(null); setPreviewRev(null); }}
             />
           ) : (
-            <div className="max-w-[720px]">
+            <div className="max-w-[1080px]">
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onBlur={handleTitleBlur}
                 disabled={!canEdit || view === "preview"}
-                className="border-0 border-b px-0 shadow-none focus-visible:ring-0 mb-6 text-[28px] font-extrabold text-foreground bg-transparent rounded-none"
+                className="h-auto border-0 border-b px-0 py-2 shadow-none focus-visible:ring-0 mb-6 text-xl lg:text-2xl leading-tight font-extrabold text-foreground bg-transparent rounded-none"
                 placeholder="Untitled document"
               />
               <div className={cn(

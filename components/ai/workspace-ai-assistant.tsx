@@ -78,7 +78,6 @@ export function WorkspaceAiAssistant({
   const [chatLoading, setChatLoading] = useState(false);
 
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionedDocs, setMentionedDocs] = useState<MentionedDoc[]>([]);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -114,9 +113,7 @@ export function WorkspaceAiAssistant({
       const newInput = before + token + " " + after;
       setInput(newInput);
       setMentionQuery(null);
-      setMentionedDocs((prev) =>
-        prev.find((d) => d.id === doc.id) ? prev : [...prev, doc]
-      );
+     
       setTimeout(() => {
         if (inputRef.current) {
           const pos = (before + token + " ").length;
@@ -227,15 +224,9 @@ export function WorkspaceAiAssistant({
     [suggestions, mentionQuery, activeSuggestion, insertMention, handleSubmit]
   );
 
-  const removeMentionedDoc = useCallback((docId: string) => {
-    setMentionedDocs((prev) => prev.filter((d) => d.id !== docId));
-    setInput((prev) =>
-      prev.replace(new RegExp(`@\\[[^\\]]*\\]\\(${docId}\\)\\s?`, "g"), "")
-    );
-  }, []);
 
   return (
-    <div className="flex flex-col h-full bg-secondary">
+    <div className="flex flex-col h-full bg-secondary max-h-screen">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 sm:px-6 shrink-0 h-[52px] bg-card border-b border-border">
         <div className="flex items-center justify-center shrink-0 w-8 h-8 rounded-lg bg-accent">
@@ -250,7 +241,7 @@ export function WorkspaceAiAssistant({
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
+      <ScrollArea className="flex-1 overflow-y-auto" ref={scrollRef}>
         <div className="px-4 sm:px-10 py-6 sm:py-7">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center text-center py-16 sm:py-20">
@@ -325,26 +316,7 @@ export function WorkspaceAiAssistant({
       {/* Input bar */}
       <div className="shrink-0 border-t border-border bg-card px-4 sm:px-10 py-4">
         <div className="max-w-[680px] mx-auto">
-          {/* Mentioned doc chips */}
-          {mentionedDocs.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {mentionedDocs.map((doc) => (
-                <span
-                  key={doc.id}
-                  className="flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold text-[11px] bg-accent text-accent-foreground border border-accent-border"
-                >
-                  <FileText className="w-[11px] h-[11px]" />
-                  {doc.title}
-                  <button
-                    onClick={() => removeMentionedDoc(doc.id)}
-                    className="ml-0.5 hover:opacity-70"
-                  >
-                    <X className="w-[11px] h-[11px]" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+          
 
           {/* Mention suggestion popover */}
           {(suggestions.length > 0 || suggestionLoading) && mentionQuery !== null && (

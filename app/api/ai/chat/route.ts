@@ -2,6 +2,8 @@ import { auth } from "@/auth";
 import { generateText } from "ai";
 import { getAIModel } from "@/lib/ai/provider";
 import { requireWorkspaceMember } from "@/lib/dal/workspace";
+import { getClosestSnapshot, getOpsBetweenRevs } from "@/lib/dal/document";
+import { replayOps } from "@/lib/sync/doc-merge";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { NextResponse } from "next/server";
@@ -17,8 +19,26 @@ const chatSchema = z.object({
   referencedDocumentIds: z.array(z.string()).max(10).default([]),
 });
 
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+interface PmNode {
+  type: string;
+  text?: string;
+  content?: PmNode[];
+}
+
+function pmJsonToText(node: unknown, depth = 0): string {
+  const n = node as PmNode;
+  if (!n || typeof n !== "object") return "";
+  if (n.type === "text" && typeof n.text === "string") return n.text;
+  const children = Array.isArray(n.content)
+    ? n.content.map((c) => pmJsonToText(c, depth + 1)).join("")
+    : "";
+  // Block-level nodes get a newline separator
+  const blockTypes = new Set([
+    "doc", "paragraph", "heading", "blockquote",
+    "bulletList", "orderedList", "listItem",
+    "codeBlock", "horizontalRule",
+  ]);
+  return blockTypes.has(n.type) ? children + "\n" : children;
 }
 
 export async function POST(req: Request) {
@@ -45,19 +65,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Documents have been replaced by canvas boards — no doc context available
-    const docs: { id: string; title: string; contentSnapshot: string; tags: string[] }[] = [];
-    void referencedDocumentIds;
+    // Fetch content for each referenced document (must belong to same workspace)
+    const docs: { id: string; title: string; contentText: string }[] = [];
+    if (referencedDocumentIds.length > 0) {
+      const dbDocs = await db.document.findMany({
+        where: {
+          id: { in: referencedDocumentIds },
+          workspaceId,
+          isArchived: false,
+        },
+        select: { id: true, title: true, currentRev: true },
+      });
+
+      await Promise.all(
+        dbDocs.map(async (doc) => {
+          const snapshot = await getClosestSnapshot(doc.id, doc.currentRev);
+          let content: unknown = snapshot?.content ?? null;
+          if (snapshot && snapshot.rev < doc.currentRev) {
+            const pendingOps = await getOpsBetweenRevs(doc.id, snapshot.rev, doc.currentRev);
+            if (pendingOps.length > 0) content = replayOps(snapshot.content, pendingOps);
+          }
+          const contentText = content ? pmJsonToText(content).replace(/\n{3,}/g, "\n\n").trim() : "";
+          docs.push({ id: doc.id, title: doc.title, contentText });
+        })
+      );
+    }
 
     const systemPrompt = [
       `You are the AI assistant for workspace "${workspace.name}".`,
       `You may only discuss documents and content from this workspace. Do not fabricate content from other workspaces.`,
       docs.length > 0
         ? `The user has referenced the following document(s):\n\n${docs
-            .map(
-              (d) =>
-                `### ${d.title} (id: ${d.id})${d.tags.length ? ` [tags: ${d.tags.join(", ")}]` : ""}\n\n${stripHtml(d.contentSnapshot)}`
-            )
+            .map((d) => `### ${d.title} (id: ${d.id})\n\n${d.contentText || "(empty document)"}`)
             .join("\n\n---\n\n")}`
         : `No documents are referenced in this turn. Answer based on the conversation history only.`,
     ].join("\n\n");
