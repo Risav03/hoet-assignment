@@ -51,6 +51,33 @@ export async function emitDocYjsUpdate(docId: string, base64Update: string): Pro
   }
 }
 
+export interface DocPresencePayload {
+  userId: string;
+  userName: string;
+  color: string;
+  /** ProseMirror absolute position for the anchor of the selection. */
+  anchor: number;
+  /** ProseMirror absolute position for the head (collapsed = same as anchor). */
+  head: number;
+}
+
+/**
+ * Broadcast a cursor-presence event to every SSE client watching a doc.
+ * Emitted when a collaborator moves their cursor or changes their selection.
+ *
+ * Safe to `await` — failures are logged but never thrown.
+ */
+export async function emitDocPresence(docId: string, payload: DocPresencePayload): Promise<void> {
+  try {
+    await pub.publish(
+      docChannel(docId),
+      JSON.stringify({ type: "doc_presence", payload })
+    );
+  } catch (err) {
+    console.error("[redis-emitter] doc presence publish failed", err);
+  }
+}
+
 /**
  * Shallow-merge a patch into the ephemeral workspace state stored in Redis.
  * Returns the merged object so callers can avoid re-reading.

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import type { Content, Editor } from "@tiptap/core";
 import { generateHTML } from "@tiptap/core";
@@ -9,9 +9,13 @@ import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import Collaboration from "@tiptap/extension-collaboration";
+import { Extension } from "@tiptap/core";
 import * as Y from "yjs";
 import { createYDoc, destroyYDoc } from "@/lib/yjs/doc";
+import { DocAwareness } from "@/lib/yjs/awareness";
+import { createRemoteCursorPlugin } from "@/lib/yjs/cursor-plugin";
 import { useYjsSync } from "@/lib/hooks/use-yjs-sync";
+import { useDocPresence } from "@/lib/hooks/use-doc-presence";
 import { getLocalDB } from "@/lib/db/local";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +70,7 @@ interface DocumentEditorProps {
   versions: VersionEntry[];
   userRole: "OWNER" | "EDITOR" | "VIEWER";
   workspaceSlug?: string;
+  currentUser: { id: string; name: string };
 }
 
 type EditorView = "edit" | "preview" | "history";
@@ -76,6 +81,7 @@ export function DocumentEditor({
   versions,
   userRole,
   workspaceSlug,
+  currentUser,
 }: DocumentEditorProps) {
   const router = useRouter();
   const canEdit = userRole === "OWNER" || userRole === "EDITOR";
@@ -90,6 +96,15 @@ export function DocumentEditor({
   // tab is opened or a new snapshot is confirmed by the server.
   const [liveVersions, setLiveVersions] = useState(versions);
   const [liveCurrentRev, setLiveCurrentRev] = useState(document.currentRev);
+
+  // Stable per-session presence color derived from the userId
+  const presenceColor = useMemo(() => userIdToColor(currentUser.id), [currentUser.id]);
+
+  // Awareness shim — created once, lives as long as the component
+  const awarenessRef = useRef<DocAwareness | null>(null);
+  if (!awarenessRef.current) {
+    awarenessRef.current = new DocAwareness();
+  }
 
   // Yjs document — created once per document, destroyed on unmount
   const ydocHandleRef = useRef<ReturnType<typeof createYDoc> | null>(null);
@@ -127,7 +142,7 @@ export function DocumentEditor({
   }, [document.id]);
 
   // Yjs sync engine: outbox flush + SSE ingestion
-  const { isSyncing, isOffline, pendingCount } = useYjsSync({
+  const { isSyncing, isOffline, pendingCount, initialSyncDone } = useYjsSync({
     ydoc: ydocRef.current,
     docId: document.id,
     onInitialSync: () => {
@@ -157,11 +172,20 @@ export function DocumentEditor({
         Color,
         Underline,
         Placeholder.configure({ placeholder: "Start writing…" }),
-        ...(ydocReady && ydocRef.current
+        ...(ydocReady && ydocRef.current && awarenessRef.current
           ? [
               Collaboration.configure({
                 document: ydocRef.current,
                 field: "document",
+              }),
+              // Custom extension that adds the remote-cursor ProseMirror plugin.
+              // Uses absolute anchor/head positions from SSE presence events so
+              // we don't need y-protocols relative positions.
+              Extension.create({
+                name: "remoteCursors",
+                addProseMirrorPlugins: () => [
+                  createRemoteCursorPlugin(awarenessRef.current!),
+                ],
               }),
             ]
           : []),
@@ -175,12 +199,27 @@ export function DocumentEditor({
     editor?.setEditable(canEdit && view === "edit");
   }, [canEdit, view, editor]);
 
+  // Broadcast local cursor position and receive remote cursors via SSE
+  useDocPresence({
+    docId: document.id,
+    editor,
+    awareness: awarenessRef.current!,
+    userId: currentUser.id,
+    userName: currentUser.name,
+    color: presenceColor,
+  });
+
   // If the Y.Doc has no content yet (brand-new or legacy document), seed it
   // from the server-side `initialContent` via Tiptap so the Collaboration
   // extension writes the correct Y.XmlFragment type — never touch the Y.Doc
   // directly with getText() which would register the wrong type.
+  //
+  // IMPORTANT: wait for initialSyncDone before checking yXml.length.
+  // If we seed before the server's Yjs updates arrive, setContent creates a
+  // new Yjs operation (new clock timestamp) that later conflicts with the
+  // identical server operation — producing duplicated content blocks.
   useEffect(() => {
-    if (!ydocReady || !ydocRef.current || !editor) return;
+    if (!ydocReady || !initialSyncDone || !ydocRef.current || !editor) return;
 
     // The Collaboration extension binds to a Y.XmlFragment, not Y.Text.
     const yXml = ydocRef.current.getXmlFragment("document");
@@ -188,7 +227,7 @@ export function DocumentEditor({
       editor.commands.setContent(jsonToTiptap(initialContent));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ydocReady, editor]);
+  }, [ydocReady, initialSyncDone, editor]);
 
   // Handle title save
   const handleTitleBlur = useCallback(async () => {
@@ -687,6 +726,18 @@ function HistoryPanel({
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Derives a deterministic, visually-distinct hex colour from a user id. */
+function userIdToColor(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (Math.imul(31, hash) + userId.charCodeAt(i)) | 0;
+  }
+  // Restrict lightness to a readable mid-range so the label stays visible on
+  // both light and dark editor backgrounds.
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 45%)`;
+}
 
 function jsonToTiptap(content: unknown): Content {
   if (!content) return "";

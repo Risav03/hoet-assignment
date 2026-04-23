@@ -14,6 +14,8 @@ export interface YjsSyncState {
   isSyncing: boolean;
   isOffline: boolean;
   pendingCount: number;
+  /** True once the initial GET /yjs fetch has completed (success or failure). */
+  initialSyncDone: boolean;
 }
 
 interface UseYjsSyncOptions {
@@ -63,6 +65,7 @@ export function useYjsSync({
   );
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [initialSyncDone, setInitialSyncDone] = useState(false);
 
   const flushingRef = useRef(false);
   const onInitialSyncRef = useRef(onInitialSync);
@@ -90,12 +93,16 @@ export function useYjsSync({
         const data = await res.json() as { updates: string[] };
         if (data.updates?.length) {
           for (const b64 of data.updates) {
-            Y.applyUpdate(ydoc!, base64ToUint8(b64));
+            // Tag with "remote-initial" so the ydoc.on("update") handler
+            // skips writing these back to the Dexie outbox.
+            Y.applyUpdate(ydoc!, base64ToUint8(b64), "remote-initial");
           }
         }
         onInitialSyncRef.current?.();
       } catch (err) {
         console.error("[use-yjs-sync] initial fetch failed", err);
+      } finally {
+        setInitialSyncDone(true);
       }
     }
 
@@ -130,8 +137,9 @@ export function useYjsSync({
     };
 
     const handler = (update: Uint8Array, origin: unknown) => {
-      // Skip updates that came from the server (applied via Y.applyUpdate from SSE)
-      if (origin === "remote-sse") return;
+      // Skip updates that came from the server — either the initial fetch or
+      // a live SSE broadcast — so they are never re-queued to the outbox.
+      if (origin === "remote-sse" || origin === "remote-initial") return;
 
       pendingUpdatesRef.current.push(update);
 
@@ -166,13 +174,13 @@ export function useYjsSync({
     flushingRef.current = true;
     setIsSyncing(true);
 
-    // Decide whether to attach a history snapshot on the last update of this flush.
-    // Always attach on the first flush so history gets an entry quickly, then
-    // every SNAPSHOT_EVERY_N_FLUSHES flushes, or when forced (e.g. tab hidden).
+    // Attach a history snapshot every N successful flushes of genuine user edits,
+    // or when forced (e.g. tab hidden).  The first-flush special case has been
+    // removed: it was triggering a snapshot — and a currentRev increment — on
+    // every page open, even when the outbox only contained re-sent server data.
     flushCountRef.current += 1;
     const attachSnapshot =
       forceSnapshot ||
-      flushCountRef.current === 1 ||
       flushCountRef.current % SNAPSHOT_EVERY_N_FLUSHES === 0;
     const snapshotContent = attachSnapshot ? getSnapshotRef.current?.() : undefined;
 
@@ -285,5 +293,5 @@ export function useYjsSync({
 
   void LOCAL_ORIGIN; // referenced in comment; suppress unused warning
 
-  return { status, isSyncing, isOffline, pendingCount };
+  return { status, isSyncing, isOffline, pendingCount, initialSyncDone };
 }

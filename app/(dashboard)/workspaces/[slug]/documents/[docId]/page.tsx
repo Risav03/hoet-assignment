@@ -68,6 +68,7 @@ export default async function DocumentPage({ params }: PageProps) {
       }))}
       userRole={membership.role as "OWNER" | "EDITOR" | "VIEWER"}
       workspaceSlug={slug}
+      currentUser={{ id: session.user.id, name: session.user.name ?? "Anonymous" }}
     />
   );
 }

@@ -14,6 +14,7 @@ interface DocumentEditorClientProps {
   versions: VersionEntry[];
   userRole: "OWNER" | "EDITOR" | "VIEWER";
   workspaceSlug: string;
+  currentUser: { id: string; name: string };
 }
 
 export function DocumentEditorClient({
@@ -22,6 +23,7 @@ export function DocumentEditorClient({
   versions,
   userRole,
   workspaceSlug,
+  currentUser,
 }: DocumentEditorClientProps) {
   return (
     <DocumentEditor
@@ -30,6 +32,7 @@ export function DocumentEditorClient({
       versions={versions}
       userRole={userRole}
       workspaceSlug={workspaceSlug}
+      currentUser={currentUser}
     />
   );
 }
