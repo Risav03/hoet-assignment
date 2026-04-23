@@ -9,7 +9,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { applyLocalChange, cacheDocSnapshot } from "@/lib/sync/doc-engine";
 import { useDocSyncEngine } from "@/lib/hooks/use-doc-sync-engine";
-import { ConflictResolver } from "./conflict-resolver";
+import { tiptapToText } from "@/lib/sync/doc-merge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,7 +28,6 @@ import {
   PanelRight,
   WifiOff,
   Loader2,
-  AlertTriangle,
   CheckCircle2,
   Clock3,
   Bold,
@@ -50,7 +49,8 @@ import {
 import Link from "next/link";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import type { DocMeta, DocConflict } from "@/lib/types/document";
+import type { DocMeta } from "@/lib/types/document";
+import type { OTOperation } from "@/lib/ot/types";
 
 interface VersionEntry {
   id: string;
@@ -82,24 +82,38 @@ export function DocumentEditor({
   const [view, setView] = useState<EditorView>("edit");
   const [previewContent, setPreviewContent] = useState<unknown | null>(null);
   const [previewRev, setPreviewRev] = useState<number | null>(null);
-  const [showConflicts, setShowConflicts] = useState(false);
-  const [resolvedConflicts, setResolvedConflicts] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
 
-  // Refs for JSON patch diffing
-  const prevJsonRef = useRef<unknown>(initialContent);
+  // Track the previous plain-text content for OT diff generation
+  const prevTextRef = useRef<string>(tiptapToText(initialContent));
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync engine
-  const { isSyncing, isOffline, pendingCount, conflicts, sync } = useDocSyncEngine({
-    docId: document.id,
-    onConflict: (incoming) => {
-      const newOnes = incoming.filter((c) => !resolvedConflicts.has(c.id));
-      if (newOnes.length > 0) setShowConflicts(true);
+  // Apply transformed remote OT ops directly into the Tiptap editor
+  const handleRemoteOps = useCallback(
+    (ops: OTOperation[]) => {
+      if (!editorRef.current) return;
+      const ed = editorRef.current;
+      ed.commands.command(({ tr, dispatch }) => {
+        if (!dispatch) return false;
+        for (const op of ops) {
+          if (op.type === "insert") {
+            tr.insertText(op.text, op.position);
+          } else if (op.type === "delete" && op.length > 0) {
+            tr.delete(op.position, op.position + op.length);
+          }
+        }
+        dispatch(tr);
+        return true;
+      });
     },
-  });
+    []
+  );
 
-  const activeConflicts = conflicts.filter((c) => !resolvedConflicts.has(c.id));
+  // Sync engine
+  const { isSyncing, isOffline, pendingCount, sync } = useDocSyncEngine({
+    docId: document.id,
+    onRemoteOps: handleRemoteOps,
+  });
 
   // Keep the syncRef current so the editor onUpdate closure can always call it
   useEffect(() => {
@@ -127,6 +141,13 @@ export function DocumentEditor({
     cacheDocSnapshot(document.id, document.currentRev, initialContent).catch(() => {});
   }, [document.id, document.currentRev, initialContent]);
 
+  // Stable ref to the Tiptap editor for remote op application
+  const editorRef = useRef<Editor | null>(null);
+
+  // Track the last rev we applied to the editor so we can detect server-side
+  // advances (e.g. after a restore).
+  const prevRevRef = useRef(document.currentRev);
+
   // Keep a stable ref to sync so onUpdate closure doesn't go stale
   const syncRef = useRef<() => void>(() => {});
 
@@ -142,20 +163,23 @@ export function DocumentEditor({
     ],
     content: jsonToTiptap(initialContent),
     editable: canEdit && view === "edit",
-    onUpdate: ({ editor }) => {
+    onCreate: ({ editor: ed }) => {
+      editorRef.current = ed;
+    },
+    onUpdate: ({ editor: ed }) => {
       if (!canEdit) return;
-      const nextJson = editor.getJSON();
+      editorRef.current = ed;
+      const nextText = ed.getText();
 
       // Debounce to avoid per-keystroke DB writes
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(async () => {
-        const prev = prevJsonRef.current;
-        prevJsonRef.current = nextJson;
-        await applyLocalChange(document.id, document.workspaceId, prev, nextJson).catch(
+        const prevText = prevTextRef.current;
+        prevTextRef.current = nextText;
+        await applyLocalChange(document.id, document.workspaceId, prevText, nextText).catch(
           (e) => console.error("[doc-editor] applyLocalChange failed", e)
         );
-        // Flush to server immediately after storing locally — don't wait for
-        // the 10-second interval so a refresh doesn't lose recent edits.
+        // Flush to server immediately after storing locally
         syncRef.current();
       }, 2000);
     },
@@ -164,6 +188,16 @@ export function DocumentEditor({
   useEffect(() => {
     editor?.setEditable(canEdit && view === "edit");
   }, [canEdit, view, editor]);
+
+  // When the server sends a new revision (after a restore + router.refresh()),
+  // push the new content into the already-mounted Tiptap editor.
+  useEffect(() => {
+    if (prevRevRef.current === document.currentRev) return;
+    prevRevRef.current = document.currentRev;
+    if (!editor) return;
+    editor.commands.setContent(jsonToTiptap(initialContent), { emitUpdate: false });
+    prevTextRef.current = tiptapToText(initialContent);
+  }, [document.currentRev, editor, initialContent]);
 
   // Handle title save
   const handleTitleBlur = useCallback(async () => {
@@ -203,31 +237,22 @@ export function DocumentEditor({
       });
       if (!res.ok) throw new Error();
       toast.success(`Restored to v${rev}`);
+      // Clear preview state and switch to edit before refreshing so the user
+      // sees the restored content immediately after router.refresh() re-renders.
+      setPreviewContent(null);
+      setPreviewRev(null);
+      setView("edit");
       router.refresh();
     } catch {
       toast.error("Failed to restore version");
     }
   }, [document.id, router]);
 
-  const handleConflictResolved = useCallback((conflictId: string) => {
-    setResolvedConflicts((prev) => new Set([...prev, conflictId]));
-    sync();
-  }, [sync]);
-
   const VIEWS: EditorView[] = ["edit", "preview", "history"];
 
   // Rendered only on client to prevent hydration mismatch
   const SyncBadge = () => {
     if (!mounted) return null;
-    if (activeConflicts.length > 0) return (
-      <button
-        onClick={() => setShowConflicts(true)}
-        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 transition-colors"
-      >
-        <AlertTriangle className="w-3 h-3" />
-        {activeConflicts.length} conflict{activeConflicts.length > 1 ? "s" : ""}
-      </button>
-    );
     if (isOffline) return (
       <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
         <WifiOff className="w-3 h-3" />
@@ -279,17 +304,6 @@ export function DocumentEditor({
 
   return (
     <div className="flex flex-col h-[100dvh]">
-      {/* Conflict resolver overlay */}
-      {showConflicts && activeConflicts.length > 0 && (
-        <ConflictResolver
-          docId={document.id}
-          conflicts={activeConflicts}
-          baseContent={prevJsonRef.current}
-          onResolved={handleConflictResolved}
-          onAllResolved={() => setShowConflicts(false)}
-        />
-      )}
-
       {/* Header */}
       <header className="bg-card border-b border-border shrink-0">
         <div className="flex items-center gap-2 px-3 sm:px-6 h-[52px]">

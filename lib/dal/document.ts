@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
-import type { Operation as JSONPatchOp } from "fast-json-patch";
 import type { DocMeta, DocSnapshot } from "@/lib/types/document";
+import type { OTOpType } from "@/lib/ot/types";
 import type { Prisma } from "@/app/generated/prisma/client";
 
 type InputJson = Prisma.InputJsonValue;
@@ -99,9 +99,8 @@ export async function createDocument(
     content: [{ type: "paragraph" }],
   };
 
-  // Create initial snapshot at rev 0
   await db.documentSnapshot.create({
-    data: { documentId: doc.id, rev: 0, content: emptyContent },
+    data: { documentId: doc.id, rev: 0, content: emptyContent as InputJson },
   });
 
   return doc;
@@ -136,15 +135,31 @@ export async function deleteDocument(documentId: string, userId: string) {
 
 // ── Ops (append-only) ──────────────────────────────────────────────────────────
 
-export async function appendDocOp(
-  documentId: string,
-  clientId: string,
-  baseRev: number,
-  rev: number,
-  diff: JSONPatchOp[]
-) {
+export interface AppendOTOpArgs {
+  documentId: string;
+  clientId: string;
+  opClientId: string;
+  baseRev: number;
+  rev: number;
+  type: OTOpType;
+  position: number;
+  text?: string;
+  length?: number;
+}
+
+export async function appendDocOp(args: AppendOTOpArgs) {
   return db.documentOp.create({
-    data: { documentId, clientId, baseRev, rev, diff: diff as unknown as InputJson },
+    data: {
+      documentId: args.documentId,
+      clientId: args.clientId,
+      opClientId: args.opClientId,
+      baseRev: args.baseRev,
+      rev: args.rev,
+      type: args.type,
+      position: args.position,
+      text: args.text ?? null,
+      length: args.length ?? null,
+    },
   });
 }
 
@@ -233,37 +248,5 @@ export async function listSnapshots(documentId: string) {
   return db.documentSnapshot.findMany({
     where: { documentId },
     orderBy: { rev: "desc" },
-  });
-}
-
-// ── Conflicts ──────────────────────────────────────────────────────────────────
-
-export async function createConflict(data: {
-  documentId: string;
-  baseRev: number;
-  localOp: unknown;
-  remoteOp: unknown;
-}) {
-  return db.documentConflict.create({
-    data: {
-      documentId: data.documentId,
-      baseRev: data.baseRev,
-      localOp: data.localOp as InputJson,
-      remoteOp: data.remoteOp as InputJson,
-    },
-  });
-}
-
-export async function resolveConflict(conflictId: string) {
-  return db.documentConflict.update({
-    where: { id: conflictId },
-    data: { status: "RESOLVED" },
-  });
-}
-
-export async function getPendingConflicts(documentId: string) {
-  return db.documentConflict.findMany({
-    where: { documentId, status: "PENDING" },
-    orderBy: { createdAt: "asc" },
   });
 }

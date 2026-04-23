@@ -63,6 +63,23 @@ export async function POST(
         throw new Error("targetRev exceeds currentRev");
       }
 
+      // Snapshot the current state so it remains visible in version history
+      // after the restore (prevents losing unsaved history between the last
+      // automatic snapshot and currentRev).
+      const existingCurrentSnap = await db.documentSnapshot.findFirst({
+        where: { documentId: docId, rev: doc.currentRev },
+      });
+      if (!existingCurrentSnap) {
+        const currentBaseSnap = await getClosestSnapshot(docId, doc.currentRev);
+        if (currentBaseSnap) {
+          const currentOps = await getOpsBetweenRevs(docId, currentBaseSnap.rev, doc.currentRev);
+          const currentContent = currentOps.length > 0
+            ? replayOps(currentBaseSnap.content, currentOps)
+            : currentBaseSnap.content;
+          await createSnapshot(docId, doc.currentRev, currentContent);
+        }
+      }
+
       // Reconstruct content at targetRev
       const snap = await getClosestSnapshot(docId, targetRev);
       if (!snap) throw new Error("Cannot reconstruct: no snapshot for targetRev");

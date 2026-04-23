@@ -5,15 +5,15 @@ import { db } from "@/lib/db";
 import {
   getDocumentMembership,
   appendDocOp,
-  getOpsBetweenRevs,
+  getOpsAfterRev,
   getClosestSnapshot,
   createSnapshot,
   countOpsSinceLastSnapshot,
-  createConflict,
 } from "@/lib/dal/document";
-import { mergeDocs, replayOps } from "@/lib/sync/doc-merge";
-import type { SyncResponse, SyncOpPayload, DocConflict } from "@/lib/types/document";
-import type { Operation as JSONPatchOp } from "fast-json-patch";
+import { replayOps } from "@/lib/sync/doc-merge";
+import { transform } from "@/lib/ot/transform";
+import type { OTOperation } from "@/lib/ot/types";
+import type { SyncResponse, SyncOpPayload } from "@/lib/types/document";
 
 const SNAPSHOT_INTERVAL = 50;
 const MAX_OPS_PER_REQUEST = 50;
@@ -21,18 +21,14 @@ const MAX_PAYLOAD_BYTES = 64 * 1024; // 64 KB
 
 // ── Zod validation ────────────────────────────────────────────────────────────
 
-const jsonPatchOpSchema = z.object({
-  op: z.enum(["add", "remove", "replace", "move", "copy", "test"]),
-  path: z.string(),
-  value: z.unknown().optional(),
-  from: z.string().optional(),
-});
-
 const syncOpSchema = z.object({
   opId: z.string().min(1).max(128),
   clientId: z.string().min(1).max(128),
   baseRev: z.number().int().min(0),
-  diff: z.array(jsonPatchOpSchema).max(500),
+  type: z.enum(["insert", "delete"]),
+  position: z.number().int().min(0),
+  text: z.string().optional(),
+  length: z.number().int().min(0).optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -41,6 +37,34 @@ const syncRequestSchema = z.object({
   baseRev: z.number().int().min(0),
   ops: z.array(syncOpSchema).min(1).max(MAX_OPS_PER_REQUEST),
 });
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function dbOpToOT(op: {
+  type: string | null;
+  position: number | null;
+  text: string | null;
+  length: number | null;
+  clientId: string;
+  opClientId: string | null;
+  baseRev: number;
+  rev: number;
+}): OTOperation | null {
+  if (!op.type || op.position === null) return null;
+  const base = {
+    clientId: op.clientId,
+    opId: op.opClientId ?? op.clientId,
+    baseRev: op.baseRev,
+    position: op.position,
+  };
+  if (op.type === "insert" && op.text !== null) {
+    return { ...base, type: "insert", text: op.text };
+  }
+  if (op.type === "delete" && op.length !== null) {
+    return { ...base, type: "delete", length: op.length };
+  }
+  return null;
+}
 
 // ── POST /api/docs/[docId]/sync ───────────────────────────────────────────────
 
@@ -54,13 +78,11 @@ export async function POST(
   const { docId } = await params;
   const userId = session.user.id;
 
-  // Payload size guard
   const contentLength = Number(req.headers.get("content-length") ?? 0);
   if (contentLength > MAX_PAYLOAD_BYTES) {
     return NextResponse.json({ error: "Payload too large" }, { status: 413 });
   }
 
-  // Role check — reject VIEWER ops
   const membership = await getDocumentMembership(docId, userId);
   if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (membership.role === "VIEWER") {
@@ -82,7 +104,7 @@ export async function POST(
     );
   }
 
-  const { baseRev, ops } = parsed.data;
+  const { ops } = parsed.data;
 
   try {
     const result = await db.$transaction(async () => {
@@ -90,124 +112,98 @@ export async function POST(
       if (!doc) throw new Error("Document not found");
 
       const currentRev = doc.currentRev;
-
       const acceptedOps: string[] = [];
-      const remoteOps: SyncOpPayload[] = [];
-      const conflicts: DocConflict[] = [];
+      const remoteOpsForClient: SyncOpPayload[] = [];
       let newRev = currentRev;
 
-      // ── Case A: baseRev === currentRev ─────────────────────────────────────
-      if (baseRev === currentRev) {
-        for (const op of ops) {
-          newRev += 1;
-          await appendDocOp(docId, op.clientId, op.baseRev, newRev, op.diff as JSONPatchOp[]);
-          acceptedOps.push(op.opId);
-        }
-        await db.document.update({
-          where: { id: docId },
-          data: { currentRev: newRev },
-        });
-      }
-      // ── Case B: baseRev < currentRev — need 3-way merge ───────────────────
-      else if (baseRev < currentRev) {
-        // Reconstruct base state at baseRev
-        const baseSnap = await getClosestSnapshot(docId, baseRev);
-        if (!baseSnap) throw new Error("Cannot reconstruct base: no snapshot found");
+      // Collect the server ops that the client hasn't seen yet (union of
+      // all baseRevs across incoming ops; use the minimum for safety).
+      const minBaseRev = Math.min(...ops.map((o) => o.baseRev));
+      const serverOps = await getOpsAfterRev(docId, minBaseRev);
 
-        const opsToBase = await getOpsBetweenRevs(docId, baseSnap.rev, baseRev);
-        const baseContent = replayOps(baseSnap.content, opsToBase);
-
-        // Collect server ops since baseRev
-        const serverOps = await getOpsBetweenRevs(docId, baseRev, currentRev);
-        const serverDiffs = serverOps.map((o) => o.diff as unknown as JSONPatchOp[]);
-
-        const clientDiffs = ops.map((o) => o.diff as JSONPatchOp[]);
-
-        const { merged, conflicts: conflictPairs } = mergeDocs(
-          baseContent,
-          clientDiffs,
-          serverDiffs
-        );
-
-        // Store conflicts
-        for (const pair of conflictPairs) {
-          const localOp = ops.find((o) =>
-            (o.diff as unknown as JSONPatchOp[]).some((d) => d.path === pair.path)
-          );
-          const remoteOp = serverOps.find((o) =>
-            (o.diff as unknown as JSONPatchOp[]).some((d) => d.path === pair.path)
-          );
-          if (localOp && remoteOp) {
-            const conflict = await createConflict({
-              documentId: docId,
-              baseRev,
-              localOp: { opId: localOp.opId, diff: localOp.diff },
-              remoteOp: { id: remoteOp.id, diff: remoteOp.diff },
-            });
-            conflicts.push({
-              id: conflict.id,
-              documentId: docId,
-              baseRev,
-              localOp: {
-                opId: localOp.opId,
-                docId,
-                clientId: localOp.clientId,
-                baseRev: localOp.baseRev,
-                diff: localOp.diff as JSONPatchOp[],
-                createdAt: localOp.createdAt,
-                status: "pending",
-              },
-              remoteOp: {
-                opId: remoteOp.id,
-                docId,
-                clientId: remoteOp.clientId,
-                baseRev: remoteOp.baseRev,
-                diff: remoteOp.diff as unknown as JSONPatchOp[],
-                createdAt: remoteOp.createdAt.toISOString(),
-                status: "acked",
-              },
-              status: "PENDING",
-            });
-          }
-        }
-
-        // Accept non-conflicting client ops
-        const conflictPaths = new Set(conflictPairs.map((c) => c.path));
-        for (const op of ops) {
-          const hasConflict = (op.diff as unknown as JSONPatchOp[]).some((d) =>
-            conflictPaths.has(d.path)
-          );
-          if (!hasConflict) {
-            newRev += 1;
-            await appendDocOp(docId, op.clientId, op.baseRev, newRev, op.diff as JSONPatchOp[]);
-            acceptedOps.push(op.opId);
-          }
-        }
-
-        // Save merged snapshot after 3-way merge
-        newRev += 1;
-        await createSnapshot(docId, newRev, merged);
-        await db.document.update({
-          where: { id: docId },
-          data: { currentRev: newRev },
-        });
-
-        // Return server ops for client to apply
-        for (const sop of serverOps) {
-          remoteOps.push({
-            opId: sop.id,
+      // Build the list of remote ops to return — anything the client hasn't seen.
+      for (const sop of serverOps) {
+        if (
+          sop.type &&
+          sop.position !== null &&
+          (sop.type !== "insert" || sop.text !== null) &&
+          (sop.type !== "delete" || sop.length !== null)
+        ) {
+          remoteOpsForClient.push({
+            opId: sop.opClientId ?? sop.id,
             clientId: sop.clientId,
             baseRev: sop.baseRev,
-            diff: sop.diff as unknown as JSONPatchOp[],
+            type: sop.type as "insert" | "delete",
+            position: sop.position,
+            text: sop.text ?? undefined,
+            length: sop.length ?? undefined,
             createdAt: sop.createdAt.toISOString(),
           });
         }
-      } else {
-        // baseRev > currentRev — revision inconsistency
-        return NextResponse.json(
-          { error: "Invalid baseRev: ahead of server" },
-          { status: 409 }
-        );
+      }
+
+      // ── OT transform + apply each incoming op ─────────────────────────────
+      for (const incomingPayload of ops) {
+        // Build an OTOperation from the payload
+        let incomingOT: OTOperation;
+        if (incomingPayload.type === "insert") {
+          if (!incomingPayload.text) continue; // malformed — skip
+          incomingOT = {
+            type: "insert",
+            position: incomingPayload.position,
+            text: incomingPayload.text,
+            clientId: incomingPayload.clientId,
+            opId: incomingPayload.opId,
+            baseRev: incomingPayload.baseRev,
+          };
+        } else {
+          if (incomingPayload.length === undefined) continue; // malformed — skip
+          incomingOT = {
+            type: "delete",
+            position: incomingPayload.position,
+            length: incomingPayload.length,
+            clientId: incomingPayload.clientId,
+            opId: incomingPayload.opId,
+            baseRev: incomingPayload.baseRev,
+          };
+        }
+
+        // Transform against every server op committed after the client's baseRev
+        const opsAfterBase = serverOps.filter((s) => s.rev > incomingOT.baseRev);
+        for (const sop of opsAfterBase) {
+          const serverOT = dbOpToOT(sop);
+          if (serverOT) {
+            incomingOT = transform(incomingOT, serverOT);
+          }
+        }
+
+        // Skip no-op deletes that got fully transformed away
+        if (incomingOT.type === "delete" && incomingOT.length === 0) {
+          acceptedOps.push(incomingPayload.opId);
+          continue;
+        }
+
+        newRev += 1;
+        await appendDocOp({
+          documentId: docId,
+          clientId: incomingPayload.clientId,
+          opClientId: incomingPayload.opId,
+          baseRev: incomingPayload.baseRev,
+          rev: newRev,
+          type: incomingOT.type,
+          position: incomingOT.position,
+          text: incomingOT.type === "insert" ? incomingOT.text : undefined,
+          length: incomingOT.type === "delete" ? incomingOT.length : undefined,
+        });
+
+        acceptedOps.push(incomingPayload.opId);
+      }
+
+      if (newRev > currentRev) {
+        await db.document.update({
+          where: { id: docId },
+          data: { currentRev: newRev },
+        });
       }
 
       // ── Auto-snapshot every SNAPSHOT_INTERVAL ops ─────────────────────────
@@ -216,7 +212,7 @@ export async function POST(
         if (acceptedOps.length > 0 && opsSinceSnap >= SNAPSHOT_INTERVAL) {
           const latestSnap = await getClosestSnapshot(docId, newRev);
           if (latestSnap && latestSnap.rev < newRev) {
-            const opsToReplay = await getOpsBetweenRevs(docId, latestSnap.rev, newRev);
+            const opsToReplay = await getOpsAfterRev(docId, latestSnap.rev);
             const newContent = replayOps(latestSnap.content, opsToReplay);
             await createSnapshot(docId, newRev, newContent);
           }
@@ -225,7 +221,7 @@ export async function POST(
         // Non-fatal
       }
 
-      return { acceptedOps, remoteOps, conflicts, newRev };
+      return { acceptedOps, remoteOps: remoteOpsForClient, newRev };
     });
 
     if (result instanceof NextResponse) return result;
@@ -235,7 +231,6 @@ export async function POST(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("Document not found")) return NextResponse.json({ error: msg }, { status: 404 });
-    if (msg.includes("Cannot reconstruct")) return NextResponse.json({ error: msg }, { status: 409 });
     console.error("[docs sync]", err);
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }

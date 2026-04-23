@@ -1,6 +1,8 @@
 "use client";
-import { compare, applyPatch, deepClone, type Operation as JSONPatchOp } from "fast-json-patch";
 import { getLocalDB } from "@/lib/db/local";
+import { diffToOTOps } from "@/lib/ot/apply";
+import { transform } from "@/lib/ot/transform";
+import type { OTOperation } from "@/lib/ot/types";
 import type { SyncRequest, SyncResponse, SyncOpPayload } from "@/lib/types/document";
 
 const BATCH_SIZE = 20;
@@ -24,47 +26,57 @@ export function createClientId(): string {
 // ── Write flow (offline-first) ─────────────────────────────────────────────────
 
 /**
- * Called on every Tiptap onUpdate. Generates a JSON Patch diff between the
- * previous and next Tiptap JSON content, stores the op in IndexedDB, and
- * queues it for sync. Does NOT make any network calls.
+ * Called on every debounced Tiptap onUpdate. Diffs the previous and next
+ * plain-text representations to produce atomic OT insert/delete operations,
+ * stores them in IndexedDB, and queues them for sync.
  */
 export async function applyLocalChange(
   docId: string,
   workspaceId: string,
-  prevContent: unknown,
-  nextContent: unknown
+  prevText: string,
+  nextText: string
 ): Promise<void> {
-  const diff: JSONPatchOp[] = compare(
-    prevContent as object,
-    nextContent as object
-  );
-  if (diff.length === 0) return;
-
   const db = getLocalDB();
   const meta = await db.docMeta.get(docId);
   const baseRev = meta?.lastLocalRev ?? 0;
-  const newRev = baseRev + 1;
-  const opId = createDocOpId();
   const clientId = createClientId();
   const now = new Date().toISOString();
 
-  await db.transaction("rw", [db.docMeta, db.docOps, db.docOutbox], async () => {
-    await db.docOps.add({
-      opId,
-      docId,
-      clientId,
-      baseRev,
-      diff,
-      createdAt: now,
-      status: "pending",
-    });
+  let opCounter = 0;
+  const makeOpId = () => {
+    const id = createDocOpId() + (opCounter > 0 ? `-${opCounter}` : "");
+    opCounter++;
+    return id;
+  };
 
-    await db.docOutbox.put({
-      opId,
-      docId,
-      retryCount: 0,
-      nextRetryAt: now,
-    });
+  const ops = diffToOTOps(prevText, nextText, clientId, makeOpId, baseRev);
+  if (ops.length === 0) return;
+
+  let newRev = baseRev;
+
+  await db.transaction("rw", [db.docMeta, db.docOps, db.docOutbox], async () => {
+    for (const op of ops) {
+      newRev += 1;
+      await db.docOps.add({
+        opId: op.opId,
+        docId,
+        clientId,
+        baseRev: op.baseRev,
+        type: op.type,
+        position: op.position,
+        text: op.type === "insert" ? op.text : undefined,
+        length: op.type === "delete" ? op.length : undefined,
+        createdAt: now,
+        status: "pending",
+      });
+
+      await db.docOutbox.put({
+        opId: op.opId,
+        docId,
+        retryCount: 0,
+        nextRetryAt: now,
+      });
+    }
 
     if (meta) {
       await db.docMeta.update(docId, {
@@ -98,58 +110,14 @@ export async function cacheDocSnapshot(
   await db.docSnapshots.put({ snapshotId, docId, rev, content, createdAt: new Date().toISOString() });
 }
 
-// ── Local version reconstruction ──────────────────────────────────────────────
-
-/**
- * Reconstruct the document content at a target rev by loading the nearest
- * local snapshot and replaying pending ops. Used for local offline preview.
- */
-export async function reconstructAtRev(
-  docId: string,
-  targetRev: number
-): Promise<unknown | null> {
-  const db = getLocalDB();
-
-  const snaps = await db.docSnapshots
-    .where("[docId+rev]")
-    .between([docId, 0], [docId, targetRev], true, true)
-    .reverse()
-    .first()
-    .catch(() => null);
-
-  // Fallback: just get the most recent snapshot for this doc
-  const snap = snaps ?? (await db.docSnapshots
-    .where("docId")
-    .equals(docId)
-    .last()
-    .catch(() => null));
-
-  if (!snap) return null;
-
-  const ops = await db.docOps
-    .where("docId")
-    .equals(docId)
-    .filter((op) => op.baseRev >= snap.rev && op.baseRev < targetRev)
-    .sortBy("baseRev");
-
-  let doc = deepClone(snap.content as object);
-  for (const op of ops) {
-    if (op.diff.length === 0) continue;
-    try {
-      doc = applyPatch(doc, op.diff, false, false).newDocument;
-    } catch {
-      // skip malformed patches
-    }
-  }
-
-  return doc;
-}
-
 // ── Sync engine ───────────────────────────────────────────────────────────────
 
 /**
  * Flush pending ops to the server. Respects back-off via nextRetryAt.
  * Idempotent — safe to call frequently.
+ *
+ * Returns the server response (which includes remote ops for the client to
+ * apply) or null when there is nothing to flush / already flushing.
  */
 export async function runDocSyncEngine(docId: string): Promise<SyncResponse | null> {
   if (syncRunning) return null;
@@ -197,7 +165,10 @@ async function _flush(docId: string): Promise<SyncResponse | null> {
       opId: op.opId,
       clientId: op.clientId,
       baseRev: op.baseRev,
-      diff: op.diff,
+      type: op.type,
+      position: op.position,
+      text: op.text,
+      length: op.length,
       createdAt: op.createdAt,
     })),
   };
@@ -219,23 +190,16 @@ async function _flush(docId: string): Promise<SyncResponse | null> {
 
     const data: SyncResponse = await res.json();
 
-    // Mark accepted ops as acked, remove from outbox
     for (const opId of data.acceptedOps) {
       await db.docOps.where("opId").equals(opId).modify({ status: "acked" });
       await db.docOutbox.where("opId").equals(opId).delete();
     }
 
-    // Update lastKnownServerRev
     if (meta) {
       await db.docMeta.update(docId, {
         lastKnownServerRev: data.newRev,
         isDirty: data.acceptedOps.length < opIds.length,
       });
-    }
-
-    // Cache received remote snapshot if any
-    if (data.remoteOps.length > 0) {
-      // Remote ops received — the server has already merged; just update rev
     }
 
     return data;
@@ -260,7 +224,6 @@ async function _markRetry(
       entry.retryCount += 1;
       entry.nextRetryAt = nextRetry;
     });
-  // Mark as failed after 5 retries
   const entries = await db.docOutbox.where("opId").anyOf(outboxOpIds).toArray();
   for (const entry of entries) {
     if (entry.retryCount >= 5) {
@@ -269,6 +232,77 @@ async function _markRetry(
     }
   }
   await db.docMeta.update(docId, { isDirty: true });
+}
+
+// ── Client-side OT: transform remote ops against pending local ops ─────────────
+
+/**
+ * Transform a list of remote OT operations against the client's pending (not-yet-
+ * acked) local operations, then return the adjusted remote ops for application
+ * to the editor.
+ *
+ * This ensures remote changes land at the correct position even while the client
+ * has unsynced local edits in the outbox.
+ */
+export async function transformRemoteOps(
+  docId: string,
+  remoteOps: SyncOpPayload[]
+): Promise<OTOperation[]> {
+  if (remoteOps.length === 0) return [];
+
+  const db = getLocalDB();
+
+  // Collect all local pending / sent ops (not yet acked) to transform against
+  const localOps = await db.docOps
+    .where("docId")
+    .equals(docId)
+    .filter((o) => o.status === "pending" || o.status === "sent")
+    .sortBy("baseRev");
+
+  const localOT: OTOperation[] = localOps
+    .map((o): OTOperation | null => {
+      if (o.type === "insert" && o.text !== undefined) {
+        return { type: "insert", position: o.position, text: o.text, clientId: o.clientId, opId: o.opId, baseRev: o.baseRev };
+      }
+      if (o.type === "delete" && o.length !== undefined) {
+        return { type: "delete", position: o.position, length: o.length, clientId: o.clientId, opId: o.opId, baseRev: o.baseRev };
+      }
+      return null;
+    })
+    .filter((o): o is OTOperation => o !== null);
+
+  return remoteOps
+    .map((remotePayload): OTOperation | null => {
+      let remoteOT: OTOperation;
+      if (remotePayload.type === "insert") {
+        if (!remotePayload.text) return null;
+        remoteOT = {
+          type: "insert",
+          position: remotePayload.position,
+          text: remotePayload.text,
+          clientId: remotePayload.clientId,
+          opId: remotePayload.opId,
+          baseRev: remotePayload.baseRev,
+        };
+      } else {
+        if (remotePayload.length === undefined) return null;
+        remoteOT = {
+          type: "delete",
+          position: remotePayload.position,
+          length: remotePayload.length,
+          clientId: remotePayload.clientId,
+          opId: remotePayload.opId,
+          baseRev: remotePayload.baseRev,
+        };
+      }
+
+      for (const localOp of localOT) {
+        remoteOT = transform(remoteOT, localOp);
+      }
+
+      return remoteOT;
+    })
+    .filter((o): o is OTOperation => o !== null);
 }
 
 // ── Pending count ─────────────────────────────────────────────────────────────

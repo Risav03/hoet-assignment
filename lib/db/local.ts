@@ -1,7 +1,7 @@
 "use client";
 import Dexie, { type Table } from "dexie";
 import type { CanvasNode, CanvasEdge, CanvasOp } from "@/lib/types/canvas";
-import type { Operation as JSONPatchOp } from "fast-json-patch";
+import type { OTOpType } from "@/lib/ot/types";
 
 // ── Canvas types ──────────────────────────────────────────────────────────────
 
@@ -48,7 +48,10 @@ export interface LocalDocOp {
   docId: string;
   clientId: string;
   baseRev: number;
-  diff: JSONPatchOp[];
+  type: OTOpType;
+  position: number;
+  text?: string;
+  length?: number;
   createdAt: string;
   status: DocOpStatus;
 }
@@ -161,6 +164,26 @@ class CanvasLocalDB extends Dexie {
       syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
       proposals: "id, workspaceId, documentId, status, createdAt",
     });
+    // v3: migrated docOps from diff-based (JSONPatch) to OT (insert/delete).
+    // Schema string is identical — Dexie only tracks indexed columns.
+    // Old pending ops are cleared so the outbox doesn't send stale diffs.
+    this.version(3)
+      .stores({
+        boardOps: "++id, operationId, boardId, workspaceId, status, createdAt",
+        boardSnapshots: "id, workspaceId, snapshotAt",
+        docMeta: "docId, workspaceId, isDirty, updatedAt",
+        docOps: "++id, opId, docId, status, createdAt",
+        docSnapshots: "snapshotId, docId, rev",
+        docOutbox: "opId, docId, nextRetryAt",
+        documents: "id, workspaceId, updatedAt, isArchived",
+        drafts: "id, documentId, workspaceId, savedAt",
+        syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
+        proposals: "id, workspaceId, documentId, status, createdAt",
+      })
+      .upgrade(async (tx) => {
+        await tx.table("docOps").clear();
+        await tx.table("docOutbox").clear();
+      });
   }
 }
 

@@ -1,4 +1,4 @@
-import type { Operation as JSONPatchOp } from "fast-json-patch";
+import type { OTOpType } from "@/lib/ot/types";
 
 // ── Op status ──────────────────────────────────────────────────────────────────
 
@@ -11,20 +11,12 @@ export interface DocOp {
   docId: string;
   clientId: string;
   baseRev: number;
-  diff: JSONPatchOp[];
+  type: OTOpType;
+  position: number;
+  text?: string;
+  length?: number;
   createdAt: string;
   status: DocOpStatus;
-}
-
-// ── Conflict record returned by the server ────────────────────────────────────
-
-export interface DocConflict {
-  id: string;
-  documentId: string;
-  baseRev: number;
-  localOp: DocOp;
-  remoteOp: DocOp;
-  status: "PENDING" | "RESOLVED";
 }
 
 // ── Sync wire types ───────────────────────────────────────────────────────────
@@ -33,7 +25,10 @@ export interface SyncOpPayload {
   opId: string;
   clientId: string;
   baseRev: number;
-  diff: JSONPatchOp[];
+  type: OTOpType;
+  position: number;
+  text?: string;
+  length?: number;
   createdAt: string;
 }
 
@@ -46,7 +41,6 @@ export interface SyncRequest {
 export interface SyncResponse {
   acceptedOps: string[];
   remoteOps: SyncOpPayload[];
-  conflicts: DocConflict[];
   newRev: number;
 }
 
@@ -69,15 +63,6 @@ export interface DocSnapshot {
   rev: number;
   content: unknown;
   createdAt: string;
-}
-
-// ── Conflict resolution request ───────────────────────────────────────────────
-
-export type ConflictResolution = "accept_local" | "accept_remote";
-
-export interface ResolveConflictRequest {
-  conflictId: string;
-  resolution: ConflictResolution;
 }
 
 // ── Restore request ───────────────────────────────────────────────────────────
