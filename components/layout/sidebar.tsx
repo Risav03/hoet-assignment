@@ -8,7 +8,6 @@ import {
   Users,
   Settings,
   Bot,
-  Activity,
   LogOut,
   ChevronDown,
   Plus,
@@ -68,7 +67,6 @@ function NavContent({
         { href: `${base}/canvas`, icon: LayoutGrid, label: "Canvas" },
         { href: `${base}/ai-assistant`, icon: Bot, label: "AI Assistant" },
         { href: `${base}/members`, icon: Users, label: "Members" },
-        { href: `${base}/activity`, icon: Activity, label: "Activity" },
         { href: `${base}/settings`, icon: Settings, label: "Settings" },
       ]
     : [];
