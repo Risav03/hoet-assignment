@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/core";
 import { DocAwareness, userIdToNumericId } from "@/lib/yjs/awareness";
 import { remoteCursorPluginKey } from "@/lib/yjs/cursor-plugin";
+import { useDocEventSource } from "@/lib/hooks/use-doc-event-source";
 
 const BROADCAST_DEBOUNCE_MS = 300;
 /** After this many ms with no update we remove the remote user's cursor. */
@@ -86,61 +87,56 @@ export function useDocPresence({
   }, [awareness, userName, color]);
 
   // ── SSE listener for remote cursors ───────────────────────────────────────
-  useEffect(() => {
-    if (typeof EventSource === "undefined") return;
-
-    const es = new EventSource(`/api/events?docId=${encodeURIComponent(docId)}`);
-
-    const handlePresence = (e: MessageEvent<string>) => {
-      try {
-        const data = JSON.parse(e.data) as {
-          payload?: {
-            userId?: string;
-            userName?: string;
-            color?: string;
-            anchor?: number;
-            head?: number;
-          };
+  // Shares a single EventSource connection with useYjsSync via the
+  // ref-counted pool in useDocEventSource.
+  useDocEventSource(docId, "doc_presence", (e: MessageEvent<string>) => {
+    try {
+      const data = JSON.parse(e.data) as {
+        payload?: {
+          userId?: string;
+          userName?: string;
+          color?: string;
+          anchor?: number;
+          head?: number;
         };
-        const p = data.payload;
-        if (!p?.userId || p.userId === userId) return; // skip own events
+      };
+      const p = data.payload;
+      if (!p?.userId || p.userId === userId) return; // skip own events
 
-        const remoteUserId = p.userId; // narrowed to string
-        const numericId = userIdToNumericId(remoteUserId);
+      const remoteUserId = p.userId; // narrowed to string
+      const numericId = userIdToNumericId(remoteUserId);
 
-        awareness.updateRemote(numericId, {
-          user: { name: p.userName ?? "Unknown", color: p.color ?? "#888888" },
-          cursor: typeof p.anchor === "number" && typeof p.head === "number"
-            ? { anchor: p.anchor, head: p.head }
-            : null,
-        });
+      awareness.updateRemote(numericId, {
+        user: { name: p.userName ?? "Unknown", color: p.color ?? "#888888" },
+        cursor: typeof p.anchor === "number" && typeof p.head === "number"
+          ? { anchor: p.anchor, head: p.head }
+          : null,
+      });
 
-        // Ask the ProseMirror cursor plugin to redraw decorations
-        if (editorRef.current) triggerCursorRedraw(editorRef.current);
+      // Ask the ProseMirror cursor plugin to redraw decorations
+      if (editorRef.current) triggerCursorRedraw(editorRef.current);
 
-        // Refresh presence expiry timer
-        const existingTimeout = timeoutRefs.current.get(remoteUserId);
-        if (existingTimeout) clearTimeout(existingTimeout);
-        timeoutRefs.current.set(
-          remoteUserId,
-          setTimeout(() => {
-            awareness.removeRemote(numericId);
-            if (editorRef.current) triggerCursorRedraw(editorRef.current);
-            timeoutRefs.current.delete(remoteUserId);
-          }, PRESENCE_TIMEOUT_MS)
-        );
-      } catch {
-        // ignore malformed events
-      }
-    };
+      // Refresh presence expiry timer
+      const existingTimeout = timeoutRefs.current.get(remoteUserId);
+      if (existingTimeout) clearTimeout(existingTimeout);
+      timeoutRefs.current.set(
+        remoteUserId,
+        setTimeout(() => {
+          awareness.removeRemote(numericId);
+          if (editorRef.current) triggerCursorRedraw(editorRef.current);
+          timeoutRefs.current.delete(remoteUserId);
+        }, PRESENCE_TIMEOUT_MS)
+      );
+    } catch {
+      // ignore malformed events
+    }
+  });
 
-    es.addEventListener("doc_presence", handlePresence);
-
+  // Clean up presence timers on unmount
+  useEffect(() => {
     return () => {
-      es.removeEventListener("doc_presence", handlePresence);
-      es.close();
       for (const t of timeoutRefs.current.values()) clearTimeout(t);
       timeoutRefs.current.clear();
     };
-  }, [docId, userId, awareness]);
+  }, []);
 }

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import { getLocalDB } from "@/lib/db/local";
 import { uint8ToBase64, base64ToUint8 } from "@/lib/yjs/encoding";
+import { useDocEventSource } from "@/lib/hooks/use-doc-event-source";
 
 const FLUSH_INTERVAL_MS = 5_000;
 
@@ -57,6 +58,10 @@ export function useYjsSync({
   const onInitialSyncRef = useRef(onInitialSync);
   onInitialSyncRef.current = onInitialSync;
 
+  // Holds the latest flush function so commitPending can trigger it immediately
+  // without creating a circular effect dependency.
+  const flushRef = useRef<() => Promise<void>>(async () => {});
+
   // Pending update accumulator: collect deltas between debounce flushes
   const pendingUpdatesRef = useRef<Uint8Array[]>([]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,7 +94,7 @@ export function useYjsSync({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId, ydoc]);
 
-  // ── Step 2: capture local updates into Dexie outbox (debounced 2 s) ─────────
+  // ── Step 2: capture local updates into Dexie outbox (debounced 500 ms) ──────
   useEffect(() => {
     if (!ydoc) return;
 
@@ -112,6 +117,8 @@ export function useYjsSync({
         createdAt: new Date().toISOString(),
       }).then(() => {
         setPendingCount((c) => c + 1);
+        // Immediately push to the server instead of waiting for the 5s interval.
+        void flushRef.current();
       });
     };
 
@@ -122,7 +129,7 @@ export function useYjsSync({
 
       pendingUpdatesRef.current.push(update);
 
-      // Reset the 2-second debounce window on every incoming delta
+      // Reset the 500 ms debounce window on every incoming delta
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(commitPending, 500);
     };
@@ -140,6 +147,8 @@ export function useYjsSync({
   }, [docId, ydoc]);
 
   // ── Step 3: flush outbox to server ──────────────────────────────────────────
+  // Keep flushRef in sync so commitPending can call the latest flush without
+  // adding it as a dependency of the update-capture effect.
   const flush = useCallback(async () => {
     if (!ydoc || flushingRef.current || !navigator.onLine) return;
 
@@ -162,7 +171,9 @@ export function useYjsSync({
         });
 
         if (res.ok) {
-          await db.yUpdates.update(row.id!, { status: "acked" });
+          // Delete immediately — y-indexeddb holds the durable CRDT state,
+          // so acked rows have no further purpose and would accumulate forever.
+          await db.yUpdates.delete(row.id!);
           setPendingCount((c) => Math.max(0, c - 1));
         } else {
           await db.yUpdates.update(row.id!, { status: "pending" });
@@ -176,7 +187,11 @@ export function useYjsSync({
     setIsSyncing(false);
   }, [docId, ydoc]);
 
-  // Periodic flush
+  // Keep the ref in sync so commitPending always calls the latest flush closure.
+  flushRef.current = flush;
+
+  // Periodic flush (belt-and-suspenders: catches any updates that slipped
+  // through, e.g. from the cleanup path of the update-capture effect).
   useEffect(() => {
     const timer = setInterval(flush, FLUSH_INTERVAL_MS);
     return () => clearInterval(timer);
@@ -210,31 +225,22 @@ export function useYjsSync({
   }, [flush]);
 
   // ── Step 5: SSE listener for remote Yjs updates ─────────────────────────────
-  useEffect(() => {
-    if (!ydoc || typeof EventSource === "undefined") return;
-
-    const es = new EventSource(`/api/events?docId=${encodeURIComponent(docId)}`);
-
-    const handler = (e: MessageEvent<string>) => {
-      try {
-        const data = JSON.parse(e.data) as { update?: string };
-        if (data.update) {
-          // Apply with a recognisable origin so the ydoc.on("update") handler
-          // above can skip writing remote updates back to the outbox.
-          Y.applyUpdate(ydoc!, base64ToUint8(data.update), "remote-sse");
-        }
-      } catch (err) {
-        console.error("[use-yjs-sync] SSE apply failed", err);
+  // Shares a single EventSource connection with useDocPresence via the
+  // ref-counted pool in useDocEventSource.
+  useDocEventSource(docId, "yjs_update", (e: MessageEvent<string>) => {
+    if (!ydoc) return;
+    try {
+      // SSE data shape: { type, payload: { update }, docId }
+      const data = JSON.parse(e.data) as { payload?: { update?: string } };
+      if (data.payload?.update) {
+        // Apply with a recognisable origin so the ydoc.on("update") handler
+        // above can skip writing remote updates back to the outbox.
+        Y.applyUpdate(ydoc, base64ToUint8(data.payload.update), "remote-sse");
       }
-    };
-
-    es.addEventListener("yjs_update", handler);
-
-    return () => {
-      es.removeEventListener("yjs_update", handler);
-      es.close();
-    };
-  }, [docId, ydoc]);
+    } catch (err) {
+      console.error("[use-yjs-sync] SSE apply failed", err);
+    }
+  });
 
   // ── Derive status label ──────────────────────────────────────────────────────
   const status: YjsSyncStatus = (() => {

@@ -47,10 +47,11 @@ export async function buildYDocFromDb(docId: string): Promise<Y.Doc> {
 
 /**
  * Extract Tiptap-compatible JSON from a reconstructed Y.Doc.
- * The Collaboration extension stores content in the XMLFragment named "default".
+ * The Collaboration extension stores content in the XMLFragment named "document"
+ * (configured via `Collaboration.configure({ field: "document" })`).
  */
 export function extractTiptapJSON(ydoc: Y.Doc): Record<string, unknown> {
-  const xmlFragment = ydoc.get("default", Y.XmlFragment);
+  const xmlFragment = ydoc.get("document", Y.XmlFragment);
   return yXmlFragmentToProsemirrorJSON(xmlFragment);
 }
 
