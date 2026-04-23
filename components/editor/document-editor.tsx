@@ -16,6 +16,7 @@ import { DocAwareness } from "@/lib/yjs/awareness";
 import { createRemoteCursorPlugin } from "@/lib/yjs/cursor-plugin";
 import { useYjsSync } from "@/lib/hooks/use-yjs-sync";
 import { useDocPresence } from "@/lib/hooks/use-doc-presence";
+import { useDocEventSource } from "@/lib/hooks/use-doc-event-source";
 import { getLocalDB } from "@/lib/db/local";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -204,6 +205,21 @@ export function DocumentEditor({
     userId: currentUser.id,
     userName: currentUser.name,
     color: presenceColor,
+  });
+
+  // Keep the sidebar revision counter and snapshot count up to date without
+  // requiring the user to open the history tab.
+  //
+  // Every Yjs edit (local or remote) fires a `yjs_update` SSE event. A new
+  // DocumentSnapshot is created server-side every 25 updates, so we debounce
+  // the refresh by 5 s — quiet enough to avoid excess fetches while still
+  // reflecting newly-created snapshots shortly after editing activity stops.
+  const versionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useDocEventSource(document.id, "yjs_update", () => {
+    if (versionRefreshTimerRef.current) clearTimeout(versionRefreshTimerRef.current);
+    versionRefreshTimerRef.current = setTimeout(() => {
+      void fetchVersions();
+    }, 5_000);
   });
 
   // If the Y.Doc has no content yet (brand-new or legacy document), seed it
