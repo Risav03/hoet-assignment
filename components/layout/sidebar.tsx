@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   FolderOpen,
-  GitPullRequest,
   Users,
   Settings,
   Bot,
@@ -35,7 +34,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useState } from "react";
-import { usePendingProposalCount } from "@/lib/hooks/use-pending-count";
 
 interface Workspace {
   id: string;
@@ -60,9 +58,6 @@ function NavContent({
 
   const base = workspaceSlug ? `/workspaces/${workspaceSlug}` : "";
 
-  const { data: pendingData } = usePendingProposalCount(currentWorkspace?.id);
-  const pendingCount = pendingData?.count ?? 0;
-
   const globalNav = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   ];
@@ -72,7 +67,6 @@ function NavContent({
         { href: `${base}/canvas`, icon: LayoutGrid, label: "Canvas" },
         { href: `${base}/documents`, icon: FolderOpen, label: "Documents" },
         { href: `${base}/ai-assistant`, icon: Bot, label: "AI Assistant" },
-        { href: `${base}/proposals`, icon: GitPullRequest, label: "Proposals" },
         { href: `${base}/members`, icon: Users, label: "Members" },
         { href: `${base}/activity`, icon: Activity, label: "Activity" },
         { href: `${base}/settings`, icon: Settings, label: "Settings" },
@@ -183,11 +177,6 @@ function NavContent({
                       )}
                     />
                     {item.label}
-                    {item.label === "Proposals" && pendingCount > 0 && (
-                      <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1">
-                        {pendingCount > 99 ? "99+" : pendingCount}
-                      </span>
-                    )}
                   </span>
                 </Link>
               ))}

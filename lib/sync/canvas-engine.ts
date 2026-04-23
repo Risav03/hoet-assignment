@@ -61,19 +61,25 @@ async function processBatch(
 
     if (res.ok) {
       const data = await res.json() as {
-        results: { operationId: string; proposalId?: string; status: string }[];
+        results: { operationId: string; status: "applied" | "conflict" | "error" }[];
       };
 
       for (const result of data.results) {
-        if (result.status === "pending" && result.proposalId) {
-          const op = ops.find((o) => o.operationId === result.operationId);
-          if (op?.id != null) {
-            await db.boardOps.update(op.id, {
-              status: "syncing",
-              proposalId: result.proposalId,
-            });
-          }
+        const op = ops.find((o) => o.operationId === result.operationId);
+        if (!op?.id) continue;
+
+        if (result.status === "applied") {
+          await db.boardOps.update(op.id, {
+            status: "committed",
+            processedAt: new Date().toISOString(),
+          });
+        } else if (result.status === "conflict") {
+          await db.boardOps.update(op.id, {
+            status: "rejected",
+            processedAt: new Date().toISOString(),
+          });
         }
+        // "error" stays as pending to retry
       }
     } else {
       await db.boardOps.where("id").anyOf(ids).modify((op: LocalBoardOp) => {
@@ -109,11 +115,6 @@ export async function markOpRejected(operationId: string) {
       processedAt: new Date().toISOString(),
     });
   }
-}
-
-export async function getOpByProposalId(proposalId: string): Promise<LocalBoardOp | undefined> {
-  const db = getCanvasDB();
-  return db.boardOps.where("proposalId").equals(proposalId).first();
 }
 
 export function createOperationId(): string {

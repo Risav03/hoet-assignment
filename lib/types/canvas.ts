@@ -62,6 +62,23 @@ export interface PresenceData {
   y: number;
   color: string;
   updatedAt: number;
+  draggingNodeId?: string | null;
+}
+
+export interface NodeMover {
+  userId: string;
+  name: string;
+  color: string;
+  expiresAt: number;
+}
+
+export interface ConflictInfo {
+  entityId: string;
+  entityType: "node" | "edge";
+  winnerUserId: string;
+  winnerName: string;
+  loserUserId: string;
+  loserName: string;
 }
 
 export interface PendingOp {
@@ -71,5 +88,4 @@ export interface PendingOp {
   op: CanvasOp;
   createdAt: string;
   status: "pending" | "syncing" | "committed" | "rejected";
-  proposalId?: string;
 }

@@ -15,7 +15,6 @@ export interface LocalBoardOp {
   retryCount: number;
   createdAt: string;
   processedAt?: string;
-  proposalId?: string;
 }
 
 export interface LocalBoardSnapshot {

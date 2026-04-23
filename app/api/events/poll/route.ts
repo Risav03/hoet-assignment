@@ -21,24 +21,15 @@ export async function GET(req: Request) {
   try {
     const sinceDate = since ? new Date(since) : new Date(Date.now() - 60_000);
 
-    const [proposals, activity] = await Promise.all([
-      db.changeProposal.findMany({
-        where: { workspaceId, updatedAt: { gte: sinceDate } },
-        select: { id: true, status: true, boardId: true, operationType: true, updatedAt: true },
-        orderBy: { updatedAt: "desc" },
-        take: 20,
-      }),
-      db.activityLog.findMany({
-        where: { workspaceId, createdAt: { gte: sinceDate } },
-        select: { id: true, action: true, entityType: true, entityId: true, createdAt: true },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      }),
-    ]);
+    const activity = await db.activityLog.findMany({
+      where: { workspaceId, createdAt: { gte: sinceDate } },
+      select: { id: true, action: true, entityType: true, entityId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
 
     return NextResponse.json({
       serverTime: new Date().toISOString(),
-      proposals,
       activity,
     });
   } catch (err) {

@@ -58,7 +58,7 @@ export function useBoardData(boardId: string | null) {
     },
     enabled: !!boardId,
     staleTime: 0,
-    refetchInterval: 1_000,
+    refetchInterval: 30_000,
   });
 }
 

@@ -10,16 +10,17 @@ import { CanvasToolbar } from "./toolbar";
 import { NodePropertiesPanel } from "./node-properties-panel";
 import { useCanvasDispatch } from "@/lib/hooks/use-canvas";
 import { useCanvasPresence } from "@/lib/hooks/use-canvas-presence";
-import type { CanvasNode, CanvasEdge } from "@/lib/types/canvas";
+import type { CanvasNode, CanvasEdge, NodeMover } from "@/lib/types/canvas";
 
 interface CanvasBoardProps {
   boardId: string;
   workspaceId: string;
 }
 
-const ZOOM_FACTOR = 1.15;
-const MIN_SCALE = 0.1;
+const ZOOM_FACTOR = 1.05;
+const MIN_SCALE = 0.5;
 const MAX_SCALE = 5;
+const MOVER_EXPIRY_TICK_MS = 200;
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -43,13 +44,37 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
   const selectedEdgeId = useCanvasStore((s) => s.selectedEdgeId);
   const stagePos = useCanvasStore((s) => s.stagePos);
   const stageScale = useCanvasStore((s) => s.stageScale);
+  const presence = useCanvasStore((s) => s.presence);
+  const nodeMovers = useCanvasStore((s) => s.nodeMovers);
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode);
   const setSelectedEdge = useCanvasStore((s) => s.setSelectedEdge);
   const setStagePos = useCanvasStore((s) => s.setStagePos);
   const setStageScale = useCanvasStore((s) => s.setStageScale);
+  const clearExpiredMovers = useCanvasStore((s) => s.clearExpiredMovers);
 
   const dispatch = useCanvasDispatch(boardId, workspaceId);
   const { sendPresence } = useCanvasPresence(boardId);
+
+  // Periodically clear expired node mover labels
+  useEffect(() => {
+    const timer = setInterval(clearExpiredMovers, MOVER_EXPIRY_TICK_MS);
+    return () => clearInterval(timer);
+  }, [clearExpiredMovers]);
+
+  // Merge presence-based dragging movers with stored op-applied movers.
+  // Presence shows who is actively dragging right now; store movers show
+  // who just finished a move (visible for 3 s after op applied).
+  const effectiveMovers: Record<string, NodeMover> = { ...nodeMovers };
+  for (const p of Object.values(presence)) {
+    if (p.draggingNodeId) {
+      effectiveMovers[p.draggingNodeId] = {
+        userId: p.userId,
+        name: p.name,
+        color: p.color,
+        expiresAt: Infinity, // live while they are dragging
+      };
+    }
+  }
 
   // Resize observer
   useEffect(() => {
@@ -93,7 +118,6 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
       if (!stage) return;
       const pos = stage.getPointerPosition();
       if (!pos) return;
-      // Convert to canvas coordinates
       const canvasX = (pos.x - stagePos.x) / stageScale;
       const canvasY = (pos.y - stagePos.y) / stageScale;
       sendPresence(canvasX, canvasY);
@@ -153,7 +177,6 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
         if (!connectSource) {
           setConnectSource(id);
         } else if (connectSource !== id) {
-          // Create edge
           const edge: CanvasEdge = {
             id: generateId(),
             boardId,
@@ -172,11 +195,23 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
     [connectMode, connectSource, boardId, dispatch, setSelectedNode]
   );
 
+  const handleNodeDragStart = useCallback(
+    (id: string) => {
+      const node = nodes[id];
+      if (!node) return;
+      // Broadcast to other users that we're dragging this node
+      sendPresence(node.x, node.y, id);
+    },
+    [nodes, sendPresence]
+  );
+
   const handleDragEnd = useCallback(
     (id: string, x: number, y: number) => {
+      // Clear the dragging presence signal
+      sendPresence(x, y, null);
       dispatch({ type: "MOVE_NODE", payload: { id, x, y } });
     },
-    [dispatch]
+    [dispatch, sendPresence]
   );
 
   const handleResize = useCallback(
@@ -374,7 +409,9 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
               key={node.id}
               node={node}
               isSelected={selectedNodeId === node.id || connectSource === node.id}
+              mover={effectiveMovers[node.id] ?? null}
               onSelect={handleNodeSelect}
+              onDragStart={handleNodeDragStart}
               onDragEnd={handleDragEnd}
               onResize={handleResize}
               onTextEdit={handleTextEdit}

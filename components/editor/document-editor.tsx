@@ -15,9 +15,8 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Tag, Clock, FileText, PanelRight, Save, Send, X } from "lucide-react";
-import { useSaveDocument, useSubmitProposal } from "@/lib/hooks/use-document-mutations";
-import { createPatch } from "@/lib/sync/differ";
+import { ArrowLeft, Tag, Clock, FileText, PanelRight, Save, X } from "lucide-react";
+import { useSaveDocument } from "@/lib/hooks/use-document-mutations";
 import { useSSE } from "@/lib/hooks/use-sse";
 import { useSyncEngine } from "@/lib/hooks/use-sync-engine";
 import Link from "next/link";
@@ -58,7 +57,7 @@ export function DocumentEditor({
   document,
   versions,
   userRole,
-  membersCount = 1,
+  membersCount: _membersCount = 1,
   workspaceSlug,
 }: DocumentEditorProps) {
   const router = useRouter();
@@ -71,21 +70,12 @@ export function DocumentEditor({
   const [conflictDraft, setConflictDraft] = useState<string | null>(null);
 
   const { mutate: saveDocument, isPending: saving } = useSaveDocument(document.id);
-  const { mutate: submitProposal, isPending: proposing } = useSubmitProposal();
 
   useSyncEngine();
 
   useSSE({
     workspaceId: document.workspaceId,
-    onMessage: (msg) => {
-      if (
-        msg.type === "proposal_committed" &&
-        (msg.payload as Record<string, unknown>).documentId === document.id
-      ) {
-        toast.info("A proposal was committed. Refreshing...");
-        router.refresh();
-      }
-    },
+    onMessage: () => {},
   });
 
   useEffect(() => {
@@ -144,17 +134,6 @@ export function DocumentEditor({
     );
   }, [canEdit, saveDocument, title, content, document.id]);
 
-  const handlePropose = useCallback(() => {
-    if (!canEdit) return;
-    const patch = createPatch(document.contentSnapshot, content);
-    submitProposal({
-      workspaceId: document.workspaceId,
-      documentId: document.id,
-      baseVersionId: document.currentVersionId,
-      patch: JSON.stringify(patch),
-      proposalType: "content_update",
-    });
-  }, [canEdit, submitProposal, document, content]);
 
   const currentContent = previewVersion ? previewVersion.contentSnapshot : content;
 
@@ -254,40 +233,22 @@ export function DocumentEditor({
               Draft
             </span>
             {canEdit && !previewVersion && (
-              membersCount === 1 ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="rounded-lg text-xs font-semibold h-8"
-                >
-                  {saving ? (
-                    "Saving…"
-                  ) : (
-                    <>
-                      <Save className="w-3.5 h-3.5 sm:mr-1" />
-                      <span className="hidden sm:inline">Save</span>
-                    </>
-                  )}
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={handlePropose}
-                  disabled={proposing}
-                  className="font-semibold text-primary-foreground bg-primary rounded-lg text-xs h-8 shadow-[0_1px_2px_rgba(79,70,229,.25)]"
-                >
-                  {proposing ? (
-                    "Submitting…"
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5 sm:mr-1" />
-                      <span className="hidden sm:inline">Propose</span>
-                    </>
-                  )}
-                </Button>
-              )
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-lg text-xs font-semibold h-8"
+              >
+                {saving ? (
+                  "Saving…"
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5 sm:mr-1" />
+                    <span className="hidden sm:inline">Save</span>
+                  </>
+                )}
+              </Button>
             )}
 
             {/* Info/panel toggle on mobile (<lg) */}

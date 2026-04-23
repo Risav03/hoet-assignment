@@ -2,7 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { getWorkspaceBySlug, getWorkspaceMember } from "@/lib/dal/workspace";
 import { db } from "@/lib/db";
-import { Activity, Check, X, FileText, Edit, Users, Building2, GitPullRequest, Clock } from "lucide-react";
+import { Activity, Check, X, FileText, Edit, Users, Building2, Clock } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -16,26 +16,28 @@ const ACTION_CONFIG: Record<
     iconBgClass: string;
   }
 > = {
-  PROPOSAL_COMMITTED: { label: "committed a proposal", icon: Check, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
-  PROPOSAL_CREATED:   { label: "submitted a proposal", icon: GitPullRequest, iconColorClass: "text-primary", iconBgClass: "bg-accent" },
   DOCUMENT_CREATED:   { label: "created a document", icon: FileText, iconColorClass: "text-info", iconBgClass: "bg-info-soft" },
   DOCUMENT_UPDATED:   { label: "updated a document", icon: Edit, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
   MEMBER_INVITED:     { label: "invited a member", icon: Users, iconColorClass: "text-violet", iconBgClass: "bg-violet-soft" },
   MEMBER_REMOVED:     { label: "removed a member", icon: Users, iconColorClass: "text-violet", iconBgClass: "bg-violet-soft" },
   MEMBER_ROLE_UPDATED:{ label: "updated a member's role", icon: Users, iconColorClass: "text-violet", iconBgClass: "bg-violet-soft" },
-  PROPOSAL_ACCEPTED:  { label: "accepted a proposal", icon: Check, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
-  PROPOSAL_REJECTED:  { label: "rejected a proposal", icon: X, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
   VERSION_RESTORED:   { label: "restored a version", icon: Clock, iconColorClass: "text-muted-foreground", iconBgClass: "bg-muted" },
   WORKSPACE_CREATED:  { label: "created this workspace", icon: Building2, iconColorClass: "text-primary", iconBgClass: "bg-accent" },
-  DOCUMENT_ARCHIVED:  { label: "archived a document", icon: FileText, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
-  DOCUMENT_RESTORED:  { label: "restored a document", icon: FileText, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
-  DOCUMENT_DELETED:   { label: "deleted a document", icon: FileText, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
+  BOARD_CREATED:      { label: "created a board", icon: Check, iconColorClass: "text-info", iconBgClass: "bg-info-soft" },
+  BOARD_UPDATED:      { label: "updated a board", icon: Edit, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
+  BOARD_ARCHIVED:     { label: "archived a board", icon: FileText, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
+  BOARD_DELETED:      { label: "deleted a board", icon: X, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
+  NODE_CREATED:       { label: "added a node", icon: Check, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
+  NODE_UPDATED:       { label: "updated a node", icon: Edit, iconColorClass: "text-warning", iconBgClass: "bg-warning-soft" },
+  NODE_DELETED:       { label: "deleted a node", icon: X, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
+  EDGE_CREATED:       { label: "connected nodes", icon: Check, iconColorClass: "text-success", iconBgClass: "bg-success-soft" },
+  EDGE_DELETED:       { label: "removed a connection", icon: X, iconColorClass: "text-danger", iconBgClass: "bg-danger-soft" },
 };
 
 const FILTER_CHIPS = [
   { label: "All", value: "all" },
   { label: "Documents", value: "documents" },
-  { label: "Proposals", value: "proposals" },
+  { label: "Canvas", value: "canvas" },
   { label: "Members", value: "members" },
 ] as const;
 
@@ -69,7 +71,7 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
 
   const filtered = logs.filter((log) => {
     if (activeFilter === "documents") return log.action.startsWith("DOCUMENT");
-    if (activeFilter === "proposals") return log.action.startsWith("PROPOSAL");
+    if (activeFilter === "canvas") return log.action.startsWith("BOARD") || log.action.startsWith("NODE") || log.action.startsWith("EDGE");
     if (activeFilter === "members") return log.action.startsWith("MEMBER") || log.action === "WORKSPACE_CREATED";
     return true;
   });
@@ -136,8 +138,7 @@ export default async function ActivityPage({ params, searchParams }: PageProps) 
                 {dateLogs.map((log, idx) => {
                   const config = ACTION_CONFIG[log.action];
                   const IconComponent = config?.icon ?? Activity;
-                  const isDocAction =
-                    log.action.startsWith("DOCUMENT") || log.action.startsWith("PROPOSAL");
+                  const isDocAction = log.action.startsWith("DOCUMENT");
                   const isLast = idx === dateLogs.length - 1;
 
                   return (

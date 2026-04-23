@@ -6,6 +6,20 @@ import { z } from "zod";
 import { ZodError } from "zod";
 import type { CanvasOp } from "@/lib/types/canvas";
 
+const USER_COLORS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e",
+  "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899",
+];
+
+function getColorForUser(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash << 5) - hash + userId.charCodeAt(i);
+    hash |= 0;
+  }
+  return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
+}
+
 const canvasOpSchema = z.object({
   operationId: z.string().min(1).max(128),
   op: z.object({
@@ -27,37 +41,55 @@ export async function POST(
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: boardId } = await params;
+  const authorId = session.user.id;
+  const authorName = session.user.name ?? "Unknown";
+  const authorColor = getColorForUser(authorId);
 
   try {
-    const board = await getBoardById(boardId, session.user.id);
+    const board = await getBoardById(boardId, authorId);
     if (!board) return NextResponse.json({ error: "Board not found" }, { status: 404 });
 
     const body = await req.json();
     const { operations } = batchSchema.parse(body);
 
-    const results: { operationId: string; proposalId?: string; status: string }[] = [];
+    const results: { operationId: string; status: "applied" | "conflict" | "error" }[] = [];
 
-    for (const { operationId, op } of operations) {
+    for (const { operationId, op, createdAt } of operations) {
       try {
-        const proposalId = await applyBoardOp(
+        const result = await applyBoardOp(
           boardId,
           board.workspaceId,
-          session.user.id,
-          op as CanvasOp
+          authorId,
+          authorName,
+          op as CanvasOp,
+          createdAt
         );
 
-        emitSSEEvent(board.workspaceId, {
-          type: "proposal_created",
-          payload: {
-            proposalId,
-            boardId,
-            operationId,
-            operationType: op.type,
-            authorId: session.user.id,
-          },
-        });
-
-        results.push({ operationId, proposalId, status: "pending" });
+        if (result.applied) {
+          emitSSEEvent(board.workspaceId, {
+            type: "canvas_op_applied",
+            payload: {
+              boardId,
+              operationId,
+              op,
+              authorId,
+              authorName,
+              authorColor,
+              appliedAt: new Date().toISOString(),
+            },
+          });
+          results.push({ operationId, status: "applied" });
+        } else {
+          emitSSEEvent(board.workspaceId, {
+            type: "canvas_conflict_resolved",
+            payload: {
+              boardId,
+              operationId,
+              conflict: result.conflict,
+            },
+          });
+          results.push({ operationId, status: "conflict" });
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         results.push({ operationId, status: "error" });

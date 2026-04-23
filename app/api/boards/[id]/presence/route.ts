@@ -10,6 +10,7 @@ const presenceSchema = z.object({
   y: z.number(),
   name: z.string().max(100),
   color: z.string().max(20),
+  draggingNodeId: z.string().nullable().optional(),
 });
 
 export async function POST(
@@ -26,7 +27,7 @@ export async function POST(
     if (!board) return NextResponse.json({ error: "Board not found" }, { status: 404 });
 
     const body = await req.json();
-    const { x, y, name, color } = presenceSchema.parse(body);
+    const { x, y, name, color, draggingNodeId } = presenceSchema.parse(body);
 
     emitSSEEvent(board.workspaceId, {
       type: "canvas_presence",
@@ -38,6 +39,7 @@ export async function POST(
         y,
         color,
         updatedAt: Date.now(),
+        draggingNodeId: draggingNodeId ?? null,
       },
     });
 

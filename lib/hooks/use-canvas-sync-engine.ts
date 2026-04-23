@@ -6,13 +6,14 @@ import {
   runCanvasSyncEngine,
   markOpCommitted,
   markOpRejected,
-  getOpByProposalId,
 } from "@/lib/sync/canvas-engine";
 import { useNetworkStatus } from "./use-network-status";
 import type { SSEMessage } from "./use-sse";
+import type { CanvasOp, ConflictInfo, NodeMover } from "@/lib/types/canvas";
 
 const BASE_INTERVAL = 1_000;
 const RETRY_INTERVAL = 3_000;
+const MOVER_DISPLAY_MS = 3_000;
 
 export function useCanvasSyncEngine(boardId: string | null) {
   const { data: session } = useSession();
@@ -51,40 +52,66 @@ export function useCanvasSyncEngine(boardId: string | null) {
 }
 
 export function useCanvasSSEHandler(boardId: string | null) {
+  const { data: session } = useSession();
   const store = useCanvasStore();
 
   const handleSSEMessage = useCallback(
     async (msg: SSEMessage) => {
       if (!boardId) return;
 
-      if (msg.type === "proposal_committed") {
-        const proposalId = msg.payload.proposalId as string | undefined;
+      if (msg.type === "canvas_op_applied") {
         const msgBoardId = msg.payload.boardId as string | undefined;
+        if (msgBoardId !== boardId) return;
 
-        if (msgBoardId !== boardId || !proposalId) return;
+        const operationId = msg.payload.operationId as string;
+        const authorId = msg.payload.authorId as string;
+        const authorName = msg.payload.authorName as string;
+        const authorColor = msg.payload.authorColor as string;
+        const op = msg.payload.op as CanvasOp;
 
-        // Find the local op associated with this proposal
-        const localOp = await getOpByProposalId(proposalId);
-        if (localOp) {
-          await markOpCommitted(localOp.operationId);
-          store.applyCommitted(localOp.operationId);
+        if (authorId === session?.user?.id) {
+          // Our own op was confirmed by the server — mark it committed
+          await markOpCommitted(operationId);
+          store.applyCommitted(operationId);
+        } else {
+          // Remote op from another user — apply it to our canvas
+          store.applyOp(op);
+
+          // Show the mover label on any node involved in this op
+          const nodeId =
+            op.type === "MOVE_NODE" || op.type === "UPDATE_NODE" || op.type === "DELETE_NODE"
+              ? op.payload.id
+              : op.type === "CREATE_NODE"
+              ? op.payload.id
+              : null;
+
+          if (nodeId) {
+            const mover: NodeMover = {
+              userId: authorId,
+              name: authorName,
+              color: authorColor,
+              expiresAt: Date.now() + MOVER_DISPLAY_MS,
+            };
+            store.setNodeMover(nodeId, mover);
+          }
         }
       }
 
-      if (msg.type === "proposal_rejected") {
-        const proposalId = msg.payload.proposalId as string | undefined;
+      if (msg.type === "canvas_conflict_resolved") {
         const msgBoardId = msg.payload.boardId as string | undefined;
+        if (msgBoardId !== boardId) return;
 
-        if (msgBoardId !== boardId || !proposalId) return;
+        const operationId = msg.payload.operationId as string;
+        const conflict = msg.payload.conflict as ConflictInfo | undefined;
 
-        const localOp = await getOpByProposalId(proposalId);
-        if (localOp) {
-          await markOpRejected(localOp.operationId);
-          store.rollbackOp(localOp.operationId);
+        if (conflict?.loserUserId === session?.user?.id) {
+          // Our op was rejected — roll back the optimistic update
+          await markOpRejected(operationId);
+          store.rollbackOp(operationId);
         }
       }
     },
-    [boardId, store]
+    [boardId, session?.user?.id, store]
   );
 
   return { handleSSEMessage };

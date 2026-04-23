@@ -8,6 +8,7 @@ import type {
   CanvasOp,
   PendingOp,
   PresenceData,
+  NodeMover,
 } from "@/lib/types/canvas";
 
 interface CanvasStoreState {
@@ -18,6 +19,7 @@ interface CanvasStoreState {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   presence: Record<string, PresenceData>;
+  nodeMovers: Record<string, NodeMover>;
   stagePos: { x: number; y: number };
   stageScale: number;
 }
@@ -28,9 +30,10 @@ interface CanvasStoreActions {
   applyCommitted: (operationId: string) => void;
   rollbackOp: (operationId: string) => void;
   enqueuePendingOp: (pendingOp: PendingOp) => void;
-  markOpSyncing: (operationId: string, proposalId: string) => void;
   updatePresence: (data: PresenceData) => void;
   removePresence: (userId: string) => void;
+  setNodeMover: (nodeId: string, mover: NodeMover | null) => void;
+  clearExpiredMovers: () => void;
   setSelectedNode: (id: string | null) => void;
   setSelectedEdge: (id: string | null) => void;
   setStagePos: (pos: { x: number; y: number }) => void;
@@ -48,6 +51,7 @@ const initialState: CanvasStoreState = {
   selectedNodeId: null,
   selectedEdgeId: null,
   presence: {},
+  nodeMovers: {},
   stagePos: { x: 0, y: 0 },
   stageScale: 1,
 };
@@ -77,7 +81,6 @@ function applyOpToState(
     }
     case "DELETE_NODE": {
       delete state.nodes[op.payload.id];
-      // Remove connected edges
       for (const edgeId of Object.keys(state.edges)) {
         const edge = state.edges[edgeId];
         if (edge.sourceId === op.payload.id || edge.targetId === op.payload.id) {
@@ -114,6 +117,7 @@ export const useCanvasStore = create<CanvasStore>()(
         state.selectedNodeId = null;
         state.selectedEdgeId = null;
         state.presence = {};
+        state.nodeMovers = {};
       }),
 
     applyOp: (op) =>
@@ -124,15 +128,6 @@ export const useCanvasStore = create<CanvasStore>()(
     enqueuePendingOp: (pendingOp) =>
       set((state) => {
         state.pendingOps.push(pendingOp);
-      }),
-
-    markOpSyncing: (operationId, proposalId) =>
-      set((state) => {
-        const op = state.pendingOps.find((o) => o.operationId === operationId);
-        if (op) {
-          op.status = "syncing";
-          op.proposalId = proposalId;
-        }
       }),
 
     applyCommitted: (operationId: string) =>
@@ -152,26 +147,16 @@ export const useCanvasStore = create<CanvasStore>()(
         const pending = state.pendingOps[opIdx];
         state.pendingOps.splice(opIdx, 1);
 
-        // Reverse the operation
         const op = pending.op;
         switch (op.type) {
           case "CREATE_NODE":
             delete state.nodes[op.payload.id];
             break;
-          case "DELETE_NODE":
-            // Can't fully restore without storing old state; mark as removed
-            break;
-          case "MOVE_NODE": {
-            // Without prior position stored, we can't reverse precisely
-            break;
-          }
-          case "UPDATE_NODE":
-            break;
           case "CONNECT_NODES":
             delete state.edges[op.payload.id];
             break;
-          case "DELETE_EDGE":
-            // Can't restore edge without storing prior state
+          default:
+            // For MOVE/UPDATE/DELETE, we can't fully reverse without snapshotting prior state
             break;
         }
       }),
@@ -184,6 +169,25 @@ export const useCanvasStore = create<CanvasStore>()(
     removePresence: (userId) =>
       set((state) => {
         delete state.presence[userId];
+      }),
+
+    setNodeMover: (nodeId, mover) =>
+      set((state) => {
+        if (mover === null) {
+          delete state.nodeMovers[nodeId];
+        } else {
+          state.nodeMovers[nodeId] = mover;
+        }
+      }),
+
+    clearExpiredMovers: () =>
+      set((state) => {
+        const now = Date.now();
+        for (const nodeId of Object.keys(state.nodeMovers)) {
+          if (state.nodeMovers[nodeId].expiresAt <= now) {
+            delete state.nodeMovers[nodeId];
+          }
+        }
       }),
 
     setSelectedNode: (id) =>

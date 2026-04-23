@@ -30,7 +30,7 @@ export function useCanvasPresence(boardId: string | null) {
   const timeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const sendPresence = useCallback(
-    async (x: number, y: number) => {
+    async (x: number, y: number, draggingNodeId?: string | null) => {
       if (!boardId || !session?.user?.id || !session.user.name) return;
 
       const now = Date.now();
@@ -46,6 +46,7 @@ export function useCanvasPresence(boardId: string | null) {
             y,
             name: session.user.name,
             color: getColorForUser(session.user.id),
+            draggingNodeId: draggingNodeId ?? null,
           }),
         });
       } catch {
@@ -73,7 +74,6 @@ export function useCanvasPresence(boardId: string | null) {
     [session?.user?.id, updatePresence, removePresence]
   );
 
-  // Clean up all timeouts on unmount
   useEffect(() => {
     return () => {
       Object.values(timeoutsRef.current).forEach(clearTimeout);

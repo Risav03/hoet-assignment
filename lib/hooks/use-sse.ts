@@ -14,8 +14,8 @@ interface UseSSEOptions {
   enabled?: boolean;
 }
 
-const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000];
-const POLL_INTERVAL = 15_000;
+const RECONNECT_DELAYS = [1000, 2000, 4000, 8000];
+const POLL_INTERVAL = 5_000;
 
 export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions) {
   const isOnline = useNetworkStatus();
@@ -50,11 +50,6 @@ export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions
         if (res.ok) {
           const data = await res.json();
           pollSinceRef.current = data.serverTime;
-          if (data.proposals?.length) {
-            data.proposals.forEach((p: Record<string, unknown>) => {
-              onMessageRef.current({ type: "proposal_updated", payload: p, workspaceId });
-            });
-          }
         }
       } catch {
         // ignore poll errors
@@ -100,10 +95,9 @@ export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions
     };
 
     const eventTypes = [
-      "proposal_created",
-      "proposal_updated",
-      "proposal_committed",
-      "proposal_rejected",
+      "canvas_op_applied",
+      "canvas_conflict_resolved",
+      "canvas_presence",
       "document_version_created",
       "document_updated",
       "member_invited",

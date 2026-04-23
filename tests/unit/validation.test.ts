@@ -3,7 +3,6 @@ import {
   signupSchema,
   createWorkspaceSchema,
   createDocumentSchema,
-  createProposalSchema,
   syncBatchSchema,
 } from "@/lib/validation";
 
@@ -83,23 +82,6 @@ describe("createDocumentSchema", () => {
   });
 });
 
-describe("createProposalSchema", () => {
-  it("accepts valid proposal", () => {
-    const result = createProposalSchema.safeParse({
-      documentId: "clxxx123456789012345678",
-      patch: JSON.stringify({ content: "new content" }),
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects empty patch", () => {
-    const result = createProposalSchema.safeParse({
-      documentId: "clxxx123456789012345678",
-      patch: "",
-    });
-    expect(result.success).toBe(false);
-  });
-});
 
 describe("syncBatchSchema", () => {
   const validOp = {

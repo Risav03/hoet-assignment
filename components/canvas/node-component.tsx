@@ -1,13 +1,15 @@
 "use client";
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Group, Rect, Text, Transformer } from "react-konva";
+import { Group, Rect, Text, Transformer, Label, Tag } from "react-konva";
 import type Konva from "konva";
-import type { CanvasNode } from "@/lib/types/canvas";
+import type { CanvasNode, NodeMover } from "@/lib/types/canvas";
 
 interface NodeComponentProps {
   node: CanvasNode;
   isSelected: boolean;
+  mover?: NodeMover | null;
   onSelect: (id: string) => void;
+  onDragStart?: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onResize: (id: string, width: number, height: number, x: number, y: number) => void;
   onTextEdit: (id: string, text: string) => void;
@@ -20,7 +22,9 @@ const MIN_HEIGHT = 50;
 export function NodeComponent({
   node,
   isSelected,
+  mover,
   onSelect,
+  onDragStart,
   onDragEnd,
   onResize,
   onTextEdit,
@@ -34,7 +38,6 @@ export function NodeComponent({
   const text = (node.content.text as string) ?? "";
   const fontSize = (node.content.fontSize as number) ?? 14;
 
-  // Attach transformer to selected node
   useEffect(() => {
     if (isSelected && transformerRef.current && groupRef.current) {
       transformerRef.current.nodes([groupRef.current]);
@@ -127,6 +130,7 @@ export function NodeComponent({
         onTap={() => onSelect(node.id)}
         onDblClick={handleDblClick}
         onDblTap={handleDblClick}
+        onDragStart={() => onDragStart?.(node.id)}
         onDragEnd={(e) => {
           onDragEnd(node.id, e.target.x(), e.target.y());
         }}
@@ -158,6 +162,28 @@ export function NodeComponent({
           lineHeight={1.4}
           listening={false}
         />
+
+        {/* Mover attribution label shown below the node */}
+        {mover && (
+          <Label x={8} y={node.height + 6} listening={false}>
+            <Tag
+              fill={mover.color}
+              cornerRadius={4}
+              shadowBlur={3}
+              shadowColor="rgba(0,0,0,0.2)"
+              shadowOffsetY={1}
+            />
+            <Text
+              text={`▸ ${mover.name}`}
+              fontSize={10}
+              fontFamily="Inter, system-ui, sans-serif"
+              fontStyle="bold"
+              fill="white"
+              padding={4}
+              listening={false}
+            />
+          </Label>
+        )}
       </Group>
 
       {isSelected && (

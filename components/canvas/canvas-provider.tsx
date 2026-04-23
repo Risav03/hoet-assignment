@@ -18,10 +18,8 @@ export function CanvasProvider({ boardId, workspaceId }: CanvasProviderProps) {
   const { data: board, isLoading, error } = useBoardData(boardId);
   const reset = useCanvasStore((s) => s.reset);
 
-  // Start canvas sync engine
   useCanvasSyncEngine(boardId);
 
-  // Get SSE handler for canvas events
   const { handleSSEMessage } = useCanvasSSEHandler(boardId);
   const { handleRemotePresence } = useCanvasPresence(boardId);
 
@@ -37,6 +35,7 @@ export function CanvasProvider({ boardId, workspaceId }: CanvasProviderProps) {
         y: number;
         color: string;
         updatedAt: number;
+        draggingNodeId?: string | null;
       };
       if (payload.boardId === boardId) {
         const presenceData: PresenceData = {
@@ -46,6 +45,7 @@ export function CanvasProvider({ boardId, workspaceId }: CanvasProviderProps) {
           y: payload.y,
           color: payload.color,
           updatedAt: payload.updatedAt,
+          draggingNodeId: payload.draggingNodeId ?? null,
         };
         handleRemotePresence(presenceData);
         updatePresence(presenceData);
@@ -61,7 +61,6 @@ export function CanvasProvider({ boardId, workspaceId }: CanvasProviderProps) {
     enabled: true,
   });
 
-  // Reset store on unmount
   useEffect(() => {
     return () => {
       reset();

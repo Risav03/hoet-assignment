@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { requireWorkspaceMember } from "@/lib/dal/workspace";
-import type { CanvasOp, BoardState, CanvasNode, CanvasEdge } from "@/lib/types/canvas";
+import type { CanvasOp, BoardState, CanvasNode, CanvasEdge, ConflictInfo } from "@/lib/types/canvas";
 import type { Prisma } from "@/app/generated/prisma/client";
 
 export async function getBoardsByWorkspace(workspaceId: string, userId: string) {
@@ -91,16 +91,31 @@ export async function updateBoard(
   return db.board.update({ where: { id: boardId }, data });
 }
 
+export interface ApplyOpResult {
+  applied: boolean;
+  conflict?: ConflictInfo;
+}
+
+/**
+ * Applies a canvas operation to the database using Last-Write-Wins (LWW) conflict resolution.
+ *
+ * For mutating ops (MOVE_NODE, UPDATE_NODE), if the target node was last modified by a
+ * *different* user more recently than when this op was created, the op is rejected and
+ * ConflictInfo is returned describing both parties.
+ */
 export async function applyBoardOp(
   boardId: string,
   workspaceId: string,
   userId: string,
-  op: CanvasOp
-): Promise<string> {
+  userName: string,
+  op: CanvasOp,
+  opCreatedAt: string
+): Promise<ApplyOpResult> {
   await requireWorkspaceMember(workspaceId, userId, ["OWNER", "EDITOR"]);
 
   return db.$transaction(async (tx: Prisma.TransactionClient) => {
     const now = new Date();
+    const clientTime = new Date(opCreatedAt);
 
     switch (op.type) {
       case "CREATE_NODE": {
@@ -117,19 +132,68 @@ export async function applyBoardOp(
             height: op.payload.height,
             content: op.payload.content as Prisma.InputJsonValue,
             updatedAt: now,
+            lastModifiedById: userId,
+            lastModifiedByName: userName,
           },
         });
-        break;
+        return { applied: true };
       }
+
       case "MOVE_NODE": {
+        const existing = await tx.boardNode.findUnique({
+          where: { id: op.payload.id },
+          select: { updatedAt: true, lastModifiedById: true, lastModifiedByName: true },
+        });
+
+        if (existing && existing.updatedAt > clientTime && existing.lastModifiedById && existing.lastModifiedById !== userId) {
+          return {
+            applied: false,
+            conflict: {
+              entityId: op.payload.id,
+              entityType: "node" as const,
+              winnerUserId: existing.lastModifiedById,
+              winnerName: existing.lastModifiedByName ?? "Unknown",
+              loserUserId: userId,
+              loserName: userName,
+            },
+          };
+        }
+
         await tx.boardNode.updateMany({
           where: { id: op.payload.id, boardId },
-          data: { x: op.payload.x, y: op.payload.y, updatedAt: now },
+          data: {
+            x: op.payload.x,
+            y: op.payload.y,
+            updatedAt: now,
+            lastModifiedById: userId,
+            lastModifiedByName: userName,
+          },
         });
-        break;
+        return { applied: true };
       }
+
       case "UPDATE_NODE": {
         const { id, content, x, y, width, height } = op.payload;
+
+        const existing = await tx.boardNode.findUnique({
+          where: { id },
+          select: { updatedAt: true, lastModifiedById: true, lastModifiedByName: true },
+        });
+
+        if (existing && existing.updatedAt > clientTime && existing.lastModifiedById && existing.lastModifiedById !== userId) {
+          return {
+            applied: false,
+            conflict: {
+              entityId: id,
+              entityType: "node" as const,
+              winnerUserId: existing.lastModifiedById,
+              winnerName: existing.lastModifiedByName ?? "Unknown",
+              loserUserId: userId,
+              loserName: userName,
+            },
+          };
+        }
+
         await tx.boardNode.updateMany({
           where: { id, boardId },
           data: {
@@ -139,10 +203,13 @@ export async function applyBoardOp(
             ...(width !== undefined && { width }),
             ...(height !== undefined && { height }),
             updatedAt: now,
+            lastModifiedById: userId,
+            lastModifiedByName: userName,
           },
         });
-        break;
+        return { applied: true };
       }
+
       case "DELETE_NODE": {
         await tx.boardEdge.deleteMany({
           where: {
@@ -156,8 +223,9 @@ export async function applyBoardOp(
         await tx.boardNode.deleteMany({
           where: { id: op.payload.id, boardId },
         });
-        break;
+        return { applied: true };
       }
+
       case "CONNECT_NODES": {
         await tx.boardEdge.upsert({
           where: {
@@ -176,44 +244,18 @@ export async function applyBoardOp(
             label: op.payload.label ?? null,
           },
         });
-        break;
+        return { applied: true };
       }
-      
+
+      case "DELETE_EDGE": {
+        await tx.boardEdge.deleteMany({
+          where: { id: op.payload.id, boardId },
+        });
+        return { applied: true };
+      }
+
+      default:
+        return { applied: true };
     }
-
-    const proposal = await tx.changeProposal.create({
-      data: {
-        workspaceId,
-        boardId,
-        authorId: userId,
-        patch: JSON.stringify(op),
-        operationType: op.type,
-        proposalType: "canvas_op",
-        status: "PENDING",
-      },
-    });
-
-    return proposal.id;
-  });
-}
-
-export async function getBoardProposals(
-  boardId: string,
-  userId: string,
-  status?: "PENDING" | "COMMITTED" | "REJECTED"
-) {
-  const board = await db.board.findUnique({ where: { id: boardId } });
-  if (!board) throw new Error("Board not found");
-  await requireWorkspaceMember(board.workspaceId, userId);
-
-  return db.changeProposal.findMany({
-    where: { boardId, ...(status ? { status } : {}) },
-    include: {
-      author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-      votes: {
-        include: { user: { select: { id: true, name: true } } },
-      },
-    },
-    orderBy: { createdAt: "desc" },
   });
 }
