@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { getBoardById } from "@/lib/dal/board";
+import { applyBoardOp, getBoardById } from "@/lib/dal/board";
 import { emitSSEEvent } from "@/lib/sse/emitter";
-import { getStateManager } from "@/lib/canvas/canvas-state-manager";
 import { z } from "zod";
 import { ZodError } from "zod";
 import type { CanvasOp } from "@/lib/types/canvas";
@@ -53,13 +52,11 @@ export async function POST(
     const body = await req.json();
     const { operations } = batchSchema.parse(body);
 
-    const stateManager = getStateManager();
     const results: { operationId: string; status: "applied" | "conflict" | "error" }[] = [];
 
     for (const { operationId, op, createdAt } of operations) {
       try {
-        // Apply op to in-memory state — no DB round-trip in the hot path
-        const result = stateManager.applyOp(
+        const result = await applyBoardOp(
           boardId,
           board.workspaceId,
           authorId,
@@ -69,7 +66,6 @@ export async function POST(
         );
 
         if (result.applied) {
-          // Emit SSE immediately after in-memory apply
           emitSSEEvent(board.workspaceId, {
             type: "canvas_op_applied",
             payload: {

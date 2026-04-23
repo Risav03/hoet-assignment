@@ -11,8 +11,8 @@ import { useNetworkStatus } from "./use-network-status";
 import type { SSEMessage } from "./use-sse";
 import type { CanvasOp, ConflictInfo, NodeMover } from "@/lib/types/canvas";
 
-const BASE_INTERVAL = 500;
-const RETRY_INTERVAL = 2_000;
+const BASE_INTERVAL = 1_000;
+const RETRY_INTERVAL = 3_000;
 const MOVER_DISPLAY_MS = 3_000;
 
 export function useCanvasSyncEngine(boardId: string | null) {
