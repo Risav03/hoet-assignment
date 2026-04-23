@@ -1,5 +1,5 @@
 "use client";
-import { Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Link } from "lucide-react";
+import { Plus, Trash2, ZoomIn, ZoomOut, Maximize2, Link, History } from "lucide-react";
 import { useCanvasStore } from "@/lib/store/canvas-store";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,8 @@ interface ToolbarProps {
   onZoomOut: () => void;
   connectMode: boolean;
   onToggleConnectMode: () => void;
+  historyOpen: boolean;
+  onToggleHistory: () => void;
 }
 
 export function CanvasToolbar({
@@ -21,6 +23,8 @@ export function CanvasToolbar({
   onZoomOut,
   connectMode,
   onToggleConnectMode,
+  historyOpen,
+  onToggleHistory,
 }: ToolbarProps) {
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
   const selectedEdgeId = useCanvasStore((s) => s.selectedEdgeId);
@@ -59,6 +63,15 @@ export function CanvasToolbar({
       </span>
       <ToolbarButton icon={<ZoomIn className="w-4 h-4" />} label="Zoom in" onClick={onZoomIn} />
       <ToolbarButton icon={<Maximize2 className="w-4 h-4" />} label="Fit to screen" onClick={onFitToScreen} />
+
+      <div className="w-px h-5 bg-border mx-1" />
+
+      <ToolbarButton
+        icon={<History className="w-4 h-4" />}
+        label="Version history"
+        onClick={onToggleHistory}
+        active={historyOpen}
+      />
 
       {pendingCount > 0 && (
         <>

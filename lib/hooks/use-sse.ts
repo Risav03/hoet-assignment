@@ -15,7 +15,7 @@ interface UseSSEOptions {
 }
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000];
-const POLL_INTERVAL = 5_000;
+const POLL_INTERVAL = 2_000;
 
 export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions) {
   const isOnline = useNetworkStatus();
@@ -96,6 +96,7 @@ export function useSSE({ workspaceId, onMessage, enabled = true }: UseSSEOptions
       "canvas_op_applied",
       "canvas_conflict_resolved",
       "canvas_presence",
+      "canvas_board_restored",
       "document_version_created",
       "document_updated",
       "member_invited",

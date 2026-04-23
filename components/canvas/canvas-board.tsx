@@ -8,9 +8,13 @@ import { EdgeComponent } from "./edge-component";
 import { PresenceLayer } from "./presence-layer";
 import { CanvasToolbar } from "./toolbar";
 import { NodePropertiesPanel } from "./node-properties-panel";
+import { VersionHistoryPanel } from "./version-history-panel";
+import { VersionPreview } from "./version-preview";
 import { useCanvasDispatch } from "@/lib/hooks/use-canvas";
 import { useCanvasPresence } from "@/lib/hooks/use-canvas-presence";
 import type { CanvasNode, CanvasEdge, NodeMover } from "@/lib/types/canvas";
+import type { VersionSummary } from "./version-history-panel";
+import { toast } from "sonner";
 
 interface CanvasBoardProps {
   boardId: string;
@@ -37,6 +41,9 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [connectMode, setConnectMode] = useState(false);
   const [connectSource, setConnectSource] = useState<string | null>(null);
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [previewingVersion, setPreviewingVersion] = useState<VersionSummary | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
@@ -282,6 +289,45 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
     }
   }, [selectedNodeId, selectedEdgeId, dispatch, setSelectedNode, handleDeleteEdge]);
 
+  const handleRestoreVersion = useCallback(
+    async (version: VersionSummary) => {
+      setRestoring(true);
+      const toastId = toast.loading("Restoring version…", {
+        description: version.label ?? `By ${version.createdByName}`,
+      });
+      try {
+        const res = await fetch(
+          `/api/boards/${boardId}/versions/${version.id}/restore`,
+          { method: "POST" }
+        );
+        if (res.ok) {
+          toast.success("Version restored", {
+            id: toastId,
+            description: version.label
+              ? `"${version.label}" is now the current canvas.`
+              : `Canvas restored to ${version.createdByName}'s version.`,
+          });
+        } else {
+          const body = await res.json().catch(() => ({})) as { error?: string };
+          toast.error("Restore failed", {
+            id: toastId,
+            description: body.error ?? "Something went wrong. Please try again.",
+          });
+        }
+      } catch {
+        toast.error("Restore failed", {
+          id: toastId,
+          description: "Network error. Please check your connection and try again.",
+        });
+      } finally {
+        setRestoring(false);
+        setPreviewingVersion(null);
+        setShowVersionPanel(false);
+      }
+    },
+    [boardId]
+  );
+
   const handleFitToScreen = useCallback(() => {
     const nodeList = Object.values(nodes);
     if (nodeList.length === 0) {
@@ -344,6 +390,17 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
         }}
       />
 
+      {/* Restore loading overlay — blocks all canvas interaction */}
+      {restoring && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-3 bg-background border border-border rounded-xl shadow-xl px-8 py-6">
+            <div className="w-7 h-7 border-[3px] border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-foreground">Restoring version…</p>
+            <p className="text-xs text-muted-foreground">The canvas will update for all collaborators.</p>
+          </div>
+        </div>
+      )}
+
       <CanvasToolbar
         onAddNode={handleAddNode}
         onDeleteSelected={handleDeleteSelected}
@@ -355,6 +412,8 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
           setConnectMode((v) => !v);
           setConnectSource(null);
         }}
+        historyOpen={showVersionPanel}
+        onToggleHistory={() => setShowVersionPanel((v) => !v)}
       />
 
       {connectMode && (
@@ -449,6 +508,27 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
               },
             })
           }
+        />
+      )}
+
+      {/* Version history slide-in panel */}
+      {showVersionPanel && (
+        <VersionHistoryPanel
+          boardId={boardId}
+          onClose={() => setShowVersionPanel(false)}
+          onPreview={(version) => setPreviewingVersion(version)}
+          onRestore={handleRestoreVersion}
+        />
+      )}
+
+      {/* Read-only version preview overlay */}
+      {previewingVersion && (
+        <VersionPreview
+          boardId={boardId}
+          version={previewingVersion}
+          onClose={() => setPreviewingVersion(null)}
+          onRestore={handleRestoreVersion}
+          restoring={restoring}
         />
       )}
     </div>

@@ -42,6 +42,7 @@ export async function updateWorkspaceState(
   const updated = { ...parsed, ...patch };
 
   await redis.set(key, JSON.stringify(updated));
+  await redis.sadd("dirty:workspaces", workspaceId);
   return updated;
 }
 

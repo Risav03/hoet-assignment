@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { applyBoardOp, getBoardById } from "@/lib/dal/board";
+import {
+  applyBoardOp,
+  getBoardById,
+  getBoardWithState,
+  createBoardVersion,
+  hasRecentBoardVersion,
+} from "@/lib/dal/board";
 import { emitSSEEvent, updateWorkspaceState } from "@/lib/sse/redis-emitter";
-import { scheduleFlush } from "@/lib/workspace-flush";
 import { z } from "zod";
 import { ZodError } from "zod";
 import type { CanvasOp } from "@/lib/types/canvas";
+
+const VERSION_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes
 
 const USER_COLORS = [
   "#ef4444", "#f97316", "#eab308", "#22c55e",
@@ -86,7 +93,6 @@ export async function POST(
             },
           });
 
-          scheduleFlush(board.workspaceId);
           results.push({ operationId, status: "applied" });
         } else {
           await emitSSEEvent(board.workspaceId, {
@@ -103,6 +109,34 @@ export async function POST(
         const msg = err instanceof Error ? err.message : "Unknown error";
         results.push({ operationId, status: "error" });
         console.error("[board operations]", operationId, msg);
+      }
+    }
+
+    // Auto-snapshot: create a board version if any op was applied and no recent
+    // version exists for this user on this board (debounced to 5 minutes).
+    const anyApplied = results.some((r) => r.status === "applied");
+    if (anyApplied) {
+      try {
+        const alreadySnapshotted = await hasRecentBoardVersion(
+          boardId,
+          authorId,
+          VERSION_DEBOUNCE_MS
+        );
+        if (!alreadySnapshotted) {
+          const boardState = await getBoardWithState(boardId, authorId);
+          if (boardState) {
+            await createBoardVersion(
+              boardId,
+              authorId,
+              authorName,
+              boardState.state.nodes,
+              boardState.state.edges
+            );
+          }
+        }
+      } catch (snapshotErr) {
+        // Non-fatal: log and continue
+        console.error("[board operations] auto-snapshot failed", snapshotErr);
       }
     }
 

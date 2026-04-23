@@ -259,3 +259,135 @@ export async function applyBoardOp(
     }
   });
 }
+
+// ─── Board Version DAL ────────────────────────────────────────────────────────
+
+export interface BoardVersionSummary {
+  id: string;
+  boardId: string;
+  label: string | null;
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface BoardVersionDetail extends BoardVersionSummary {
+  nodes: Record<string, CanvasNode>;
+  edges: Record<string, CanvasEdge>;
+}
+
+export async function createBoardVersion(
+  boardId: string,
+  userId: string,
+  userName: string,
+  nodes: Record<string, CanvasNode>,
+  edges: Record<string, CanvasEdge>,
+  label?: string
+): Promise<BoardVersionSummary> {
+  const board = await db.board.findUnique({ where: { id: boardId } });
+  if (!board) throw new Error("Board not found");
+  await requireWorkspaceMember(board.workspaceId, userId);
+
+  const version = await db.boardVersion.create({
+    data: {
+      boardId,
+      label: label ?? null,
+      nodes: nodes as unknown as Prisma.InputJsonValue,
+      edges: edges as unknown as Prisma.InputJsonValue,
+      createdById: userId,
+      createdByName: userName,
+    },
+  });
+
+  return {
+    id: version.id,
+    boardId: version.boardId,
+    label: version.label,
+    createdById: version.createdById,
+    createdByName: version.createdByName,
+    createdAt: version.createdAt.toISOString(),
+  };
+}
+
+export async function getBoardVersions(
+  boardId: string,
+  userId: string,
+  limit = 20,
+  cursor?: string
+): Promise<{ versions: BoardVersionSummary[]; nextCursor: string | null }> {
+  const board = await db.board.findUnique({ where: { id: boardId } });
+  if (!board) throw new Error("Board not found");
+  await requireWorkspaceMember(board.workspaceId, userId);
+
+  const rows = await db.boardVersion.findMany({
+    where: { boardId },
+    orderBy: { createdAt: "desc" },
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    select: {
+      id: true,
+      boardId: true,
+      label: true,
+      createdById: true,
+      createdByName: true,
+      createdAt: true,
+    },
+  });
+
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    versions: items.map((v) => ({
+      id: v.id,
+      boardId: v.boardId,
+      label: v.label,
+      createdById: v.createdById,
+      createdByName: v.createdByName,
+      createdAt: v.createdAt.toISOString(),
+    })),
+    nextCursor: hasMore ? items[items.length - 1].id : null,
+  };
+}
+
+export async function getBoardVersionById(
+  versionId: string,
+  boardId: string,
+  userId: string
+): Promise<BoardVersionDetail | null> {
+  const board = await db.board.findUnique({ where: { id: boardId } });
+  if (!board) return null;
+  await requireWorkspaceMember(board.workspaceId, userId);
+
+  const version = await db.boardVersion.findFirst({
+    where: { id: versionId, boardId },
+  });
+  if (!version) return null;
+
+  return {
+    id: version.id,
+    boardId: version.boardId,
+    label: version.label,
+    createdById: version.createdById,
+    createdByName: version.createdByName,
+    createdAt: version.createdAt.toISOString(),
+    nodes: version.nodes as unknown as Record<string, CanvasNode>,
+    edges: version.edges as unknown as Record<string, CanvasEdge>,
+  };
+}
+
+export async function hasRecentBoardVersion(
+  boardId: string,
+  userId: string,
+  withinMs: number
+): Promise<boolean> {
+  const since = new Date(Date.now() - withinMs);
+  const count = await db.boardVersion.count({
+    where: {
+      boardId,
+      createdById: userId,
+      createdAt: { gte: since },
+    },
+  });
+  return count > 0;
+}

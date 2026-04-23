@@ -49,10 +49,25 @@ model Board {
   BoardEdge     BoardEdge[]
   BoardNode     BoardNode[]
   SyncOperation SyncOperation[]
+  BoardVersion  BoardVersion[]
 
   @@index([workspaceId])
   @@index([workspaceId, createdAt])
   @@index([workspaceId, isArchived])
+}
+
+model BoardVersion {
+  id            String   @id @default(cuid())
+  boardId       String
+  label         String?
+  nodes         Json
+  edges         Json
+  createdById   String
+  createdByName String
+  createdAt     DateTime @default(now())
+  board         Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([boardId, createdAt])
 }
 
 model WorkspaceMember {

@@ -9,7 +9,7 @@ import {
 } from "@/lib/sync/canvas-engine";
 import { useNetworkStatus } from "./use-network-status";
 import type { SSEMessage } from "./use-sse";
-import type { CanvasOp, ConflictInfo, NodeMover } from "@/lib/types/canvas";
+import type { CanvasOp, ConflictInfo, NodeMover, CanvasNode, CanvasEdge } from "@/lib/types/canvas";
 
 const BASE_INTERVAL = 1_000;
 const RETRY_INTERVAL = 3_000;
@@ -95,6 +95,16 @@ export function useCanvasSSEHandler(boardId: string | null) {
             store.setNodeMover(nodeId, mover);
           }
         }
+      }
+
+      if (msg.type === "canvas_board_restored") {
+        const msgBoardId = msg.payload.boardId as string | undefined;
+        if (msgBoardId !== boardId) return;
+
+        const nodes = msg.payload.nodes as Record<string, CanvasNode>;
+        const edges = msg.payload.edges as Record<string, CanvasEdge>;
+        store.initBoard(boardId, { nodes, edges });
+        return;
       }
 
       if (msg.type === "canvas_conflict_resolved") {
