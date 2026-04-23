@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import {
-  applyBoardOp,
   getBoardById,
-  getBoardWithState,
-  createBoardVersion,
   hasRecentBoardVersion,
+  createBoardVersion,
 } from "@/lib/dal/board";
 import { emitSSEEvent, updateWorkspaceState } from "@/lib/sse/redis-emitter";
+import { getOrInitBoardState, applyOpToState, saveBoardState } from "@/lib/sync/board-redis";
 import { z } from "zod";
 import { ZodError } from "zod";
 import type { CanvasOp } from "@/lib/types/canvas";
@@ -60,20 +59,26 @@ export async function POST(
     const body = await req.json();
     const { operations } = batchSchema.parse(body);
 
+    // Load board state from Redis once (falls back to DB on cache miss)
+    let currentState = await getOrInitBoardState(boardId);
+    let stateModified = false;
+
     const results: { operationId: string; status: "applied" | "conflict" | "error" }[] = [];
 
     for (const { operationId, op, createdAt } of operations) {
       try {
-        const result = await applyBoardOp(
-          boardId,
-          board.workspaceId,
+        const { result, nextState } = applyOpToState(
+          currentState,
+          op as CanvasOp,
           authorId,
           authorName,
-          op as CanvasOp,
           createdAt
         );
 
         if (result.applied) {
+          currentState = nextState;
+          stateModified = true;
+
           const appliedAt = new Date().toISOString();
 
           await updateWorkspaceState(board.workspaceId, {
@@ -112,10 +117,15 @@ export async function POST(
       }
     }
 
+    // Persist the final state to Redis once and mark board + workspace dirty
+    if (stateModified) {
+      await saveBoardState(boardId, board.workspaceId, currentState);
+    }
+
     // Auto-snapshot: create a board version if any op was applied and no recent
     // version exists for this user on this board (debounced to 5 minutes).
     const anyApplied = results.some((r) => r.status === "applied");
-    if (anyApplied) {
+    if (anyApplied && stateModified) {
       try {
         const alreadySnapshotted = await hasRecentBoardVersion(
           boardId,
@@ -123,16 +133,13 @@ export async function POST(
           VERSION_DEBOUNCE_MS
         );
         if (!alreadySnapshotted) {
-          const boardState = await getBoardWithState(boardId, authorId);
-          if (boardState) {
-            await createBoardVersion(
-              boardId,
-              authorId,
-              authorName,
-              boardState.state.nodes,
-              boardState.state.edges
-            );
-          }
+          await createBoardVersion(
+            boardId,
+            authorId,
+            authorName,
+            currentState.nodes,
+            currentState.edges
+          );
         }
       } catch (snapshotErr) {
         // Non-fatal: log and continue

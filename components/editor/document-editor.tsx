@@ -1,9 +1,15 @@
 "use client";
-import { useState, useCallback, useEffect } from "react";
-import { RichTextEditor } from "./rich-text-editor";
-import { DraftAutoSave, clearDraft } from "./draft-auto-save";
-import { getLocalDB } from "@/lib/db/local";
-import { VersionTimeline } from "@/components/versions/version-timeline";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import type { Content, Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
+import { Color } from "@tiptap/extension-color";
+import { TextStyle } from "@tiptap/extension-text-style";
+import Underline from "@tiptap/extension-underline";
+import { applyLocalChange, cacheDocSnapshot } from "@/lib/sync/doc-engine";
+import { useDocSyncEngine } from "@/lib/hooks/use-doc-sync-engine";
+import { ConflictResolver } from "./conflict-resolver";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,39 +21,48 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Tag, Clock, FileText, PanelRight, Save, X } from "lucide-react";
-import { useSaveDocument } from "@/lib/hooks/use-document-mutations";
-import { useSSE } from "@/lib/hooks/use-sse";
-import { useSyncEngine } from "@/lib/hooks/use-sync-engine";
+import {
+  ArrowLeft,
+  Clock,
+  FileText,
+  PanelRight,
+  WifiOff,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Bold,
+  Italic,
+  Underline as UnderlineIcon,
+  Strikethrough,
+  Code,
+  Code2,
+  Heading1,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  Quote,
+  Minus,
+  Undo2,
+  Redo2,
+} from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import type { DocMeta, DocConflict } from "@/lib/types/document";
 
-interface Document {
+interface VersionEntry {
   id: string;
-  title: string;
-  workspaceId: string;
-  contentSnapshot: string;
-  currentVersionId?: string | null;
-  tags: string[];
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface Version {
-  id: string;
-  versionNumber: number;
-  contentSnapshot: string;
+  rev: number;
   createdAt: string;
-  createdBy: { id: string; name: string; email: string };
 }
 
 interface DocumentEditorProps {
-  document: Document;
-  versions: Version[];
-  userRole: string;
-  userId: string;
-  membersCount?: number;
+  document: DocMeta;
+  initialContent: unknown;
+  versions: VersionEntry[];
+  userRole: "OWNER" | "EDITOR" | "VIEWER";
   workspaceSlug?: string;
 }
 
@@ -55,115 +70,202 @@ type EditorView = "edit" | "preview" | "history";
 
 export function DocumentEditor({
   document,
+  initialContent,
   versions,
   userRole,
-  membersCount: _membersCount = 1,
   workspaceSlug,
 }: DocumentEditorProps) {
   const router = useRouter();
   const canEdit = userRole === "OWNER" || userRole === "EDITOR";
 
   const [title, setTitle] = useState(document.title);
-  const [content, setContent] = useState(document.contentSnapshot);
-  const [previewVersion, setPreviewVersion] = useState<Version | null>(null);
   const [view, setView] = useState<EditorView>("edit");
-  const [conflictDraft, setConflictDraft] = useState<string | null>(null);
+  const [previewContent, setPreviewContent] = useState<unknown | null>(null);
+  const [previewRev, setPreviewRev] = useState<number | null>(null);
+  const [showConflicts, setShowConflicts] = useState(false);
+  const [resolvedConflicts, setResolvedConflicts] = useState<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
 
-  const { mutate: saveDocument, isPending: saving } = useSaveDocument(document.id);
+  // Refs for JSON patch diffing
+  const prevJsonRef = useRef<unknown>(initialContent);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useSyncEngine();
+  // Sync engine
+  const { isSyncing, isOffline, pendingCount, conflicts, sync } = useDocSyncEngine({
+    docId: document.id,
+    onConflict: (incoming) => {
+      const newOnes = incoming.filter((c) => !resolvedConflicts.has(c.id));
+      if (newOnes.length > 0) setShowConflicts(true);
+    },
+  });
 
-  useSSE({
-    workspaceId: document.workspaceId,
-    onMessage: () => {},
+  const activeConflicts = conflicts.filter((c) => !resolvedConflicts.has(c.id));
+
+  // Keep the syncRef current so the editor onUpdate closure can always call it
+  useEffect(() => {
+    syncRef.current = sync;
+  }, [sync]);
+
+  // Flush to server when the tab goes hidden (user switching tabs or closing)
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (window.document.visibilityState === "hidden") {
+        sync();
+      }
+    }
+    window.document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => window.document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [sync]);
+
+  // Only render sync-state UI after client mount to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Seed the local IndexedDB snapshot on first load
+  useEffect(() => {
+    cacheDocSnapshot(document.id, document.currentRev, initialContent).catch(() => {});
+  }, [document.id, document.currentRev, initialContent]);
+
+  // Keep a stable ref to sync so onUpdate closure doesn't go stale
+  const syncRef = useRef<() => void>(() => {});
+
+  // Tiptap editor
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit,
+      TextStyle,
+      Color,
+      Underline,
+      Placeholder.configure({ placeholder: "Start writing…" }),
+    ],
+    content: jsonToTiptap(initialContent),
+    editable: canEdit && view === "edit",
+    onUpdate: ({ editor }) => {
+      if (!canEdit) return;
+      const nextJson = editor.getJSON();
+
+      // Debounce to avoid per-keystroke DB writes
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+      debounceTimer.current = setTimeout(async () => {
+        const prev = prevJsonRef.current;
+        prevJsonRef.current = nextJson;
+        await applyLocalChange(document.id, document.workspaceId, prev, nextJson).catch(
+          (e) => console.error("[doc-editor] applyLocalChange failed", e)
+        );
+        // Flush to server immediately after storing locally — don't wait for
+        // the 10-second interval so a refresh doesn't lose recent edits.
+        syncRef.current();
+      }, 300);
+    },
   });
 
   useEffect(() => {
-    async function checkDraft() {
-      try {
-        const db = getLocalDB();
-        const draft = await db.drafts.get(document.id);
+    editor?.setEditable(canEdit && view === "edit");
+  }, [canEdit, view, editor]);
 
-        if (!draft || draft.content === document.contentSnapshot) {
-          setContent(document.contentSnapshot);
-          return;
-        }
-
-        const dbUpdatedAt = document.updatedAt ? new Date(document.updatedAt) : null;
-        const draftSavedAt = new Date(draft.savedAt);
-
-        if (dbUpdatedAt && dbUpdatedAt > draftSavedAt) {
-          // DB was updated after the draft was saved — don't auto-restore
-          setContent(document.contentSnapshot);
-          setConflictDraft(draft.content);
-          toast.warning("Newer changes were accepted while you had a draft", {
-            id: "draft-conflict",
-            duration: 8000,
-            description: "Your draft is shown below for comparison.",
-          });
-        } else {
-          // Draft is at least as recent as the DB — restore as usual
-          toast.info("Draft found — restored from local storage", {
-            id: "draft-restored",
-            action: {
-              label: "Discard",
-              onClick: () => {
-                clearDraft(document.id);
-                setContent(document.contentSnapshot);
-              },
-            },
-          });
-          setContent(draft.content);
-        }
-      } catch {
-        setContent(document.contentSnapshot);
-      }
+  // Handle title save
+  const handleTitleBlur = useCallback(async () => {
+    if (!canEdit || title === document.title) return;
+    try {
+      await fetch(`/api/docs/${document.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+    } catch {
+      toast.error("Failed to save title");
     }
-    checkDraft();
-  }, [document.id, document.contentSnapshot, document.updatedAt]);
+  }, [canEdit, document.id, document.title, title]);
 
-  const handleSave = useCallback(() => {
-    if (!canEdit) return;
-    saveDocument(
-      { title, content },
-      {
-        onSuccess: async () => {
-          await clearDraft(document.id);
-        },
-      }
-    );
-  }, [canEdit, saveDocument, title, content, document.id]);
+  // Load preview at a specific rev
+  const handlePreviewRev = useCallback(async (rev: number) => {
+    try {
+      const res = await fetch(`/api/docs/${document.id}/versions?rev=${rev}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json() as { content: unknown };
+      setPreviewContent(data.content);
+      setPreviewRev(rev);
+      setView("history");
+    } catch {
+      toast.error("Failed to load version");
+    }
+  }, [document.id]);
 
+  // Restore to a rev
+  const handleRestore = useCallback(async (rev: number) => {
+    try {
+      const res = await fetch(`/api/docs/${document.id}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetRev: rev }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(`Restored to v${rev}`);
+      router.refresh();
+    } catch {
+      toast.error("Failed to restore version");
+    }
+  }, [document.id, router]);
 
-  const currentContent = previewVersion ? previewVersion.contentSnapshot : content;
+  const handleConflictResolved = useCallback((conflictId: string) => {
+    setResolvedConflicts((prev) => new Set([...prev, conflictId]));
+    sync();
+  }, [sync]);
 
   const VIEWS: EditorView[] = ["edit", "preview", "history"];
 
-  /* Right-panel content (shared between persistent aside and mobile Sheet) */
+  // Rendered only on client to prevent hydration mismatch
+  const SyncBadge = () => {
+    if (!mounted) return null;
+    if (activeConflicts.length > 0) return (
+      <button
+        onClick={() => setShowConflicts(true)}
+        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 transition-colors"
+      >
+        <AlertTriangle className="w-3 h-3" />
+        {activeConflicts.length} conflict{activeConflicts.length > 1 ? "s" : ""}
+      </button>
+    );
+    if (isOffline) return (
+      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+        <WifiOff className="w-3 h-3" />
+        Offline
+      </span>
+    );
+    if (isSyncing) return (
+      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Syncing
+      </span>
+    );
+    if (pendingCount > 0) return (
+      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+        <Clock3 className="w-3 h-3" />
+        {pendingCount} pending
+      </span>
+    );
+    return (
+      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 border border-green-200 dark:border-green-800">
+        <CheckCircle2 className="w-3 h-3" />
+        Saved
+      </span>
+    );
+  };
+
   const PanelContent = (
     <div className="p-5 space-y-6">
-      {/* Details */}
       <section>
         <h3 className="mb-3 uppercase text-[10px] font-bold tracking-[0.06em] text-muted-foreground">
           Details
         </h3>
         <div className="space-y-2">
           {[
-            {
-              label: "Created",
-              value: document.createdAt ? format(new Date(document.createdAt), "MMM d, yyyy") : "—",
-              icon: Clock,
-            },
-            {
-              label: "Updated",
-              value: document.updatedAt ? format(new Date(document.updatedAt), "MMM d, yyyy") : "—",
-              icon: FileText,
-            },
-            {
-              label: "Versions",
-              value: String(versions.length),
-              icon: Clock,
-            },
+            { label: "Created", value: format(new Date(document.createdAt), "MMM d, yyyy"), icon: Clock },
+            { label: "Updated", value: format(new Date(document.updatedAt), "MMM d, yyyy"), icon: FileText },
+            { label: "Revision", value: `v${document.currentRev}`, icon: Clock },
+            { label: "Snapshots", value: String(versions.length), icon: Clock },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">{label}</span>
@@ -172,36 +274,25 @@ export function DocumentEditor({
           ))}
         </div>
       </section>
-
-      {/* Tags */}
-      {document.tags.length > 0 && (
-        <section>
-          <h3 className="mb-3 uppercase flex items-center gap-1.5 text-[10px] font-bold tracking-[0.06em] text-muted-foreground">
-            <Tag className="w-[10px] h-[10px]" />
-            Tags
-          </h3>
-          <div className="flex flex-wrap gap-1.5">
-            {document.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full px-2.5 py-0.5 font-semibold text-[11px] bg-muted text-secondary-foreground border border-border"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 
   return (
     <div className="flex flex-col h-[100dvh]">
-      {/* Top bar — mobile: two rows, desktop: single row */}
+      {/* Conflict resolver overlay */}
+      {showConflicts && activeConflicts.length > 0 && (
+        <ConflictResolver
+          docId={document.id}
+          conflicts={activeConflicts}
+          baseContent={prevJsonRef.current}
+          onResolved={handleConflictResolved}
+          onAllResolved={() => setShowConflicts(false)}
+        />
+      )}
+
+      {/* Header */}
       <header className="bg-card border-b border-border shrink-0">
-        {/* Row 1: breadcrumb + actions */}
         <div className="flex items-center gap-2 px-3 sm:px-6 h-[52px]">
-          {/* Breadcrumb */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Link href={`/workspaces/${workspaceSlug ?? document.workspaceId}/documents`}>
               <button className="flex items-center gap-1 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground">
@@ -215,43 +306,8 @@ export function DocumentEditor({
             </span>
           </div>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {conflictDraft === null && (
-              <DraftAutoSave
-                documentId={document.id}
-                workspaceId={document.workspaceId}
-                content={content}
-              />
-            )}
-            {previewVersion && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
-                v{previewVersion.versionNumber}
-              </span>
-            )}
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
-              Draft
-            </span>
-            {canEdit && !previewVersion && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-lg text-xs font-semibold h-8"
-              >
-                {saving ? (
-                  "Saving…"
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5 sm:mr-1" />
-                    <span className="hidden sm:inline">Save</span>
-                  </>
-                )}
-              </Button>
-            )}
-
-            {/* Info/panel toggle on mobile (<lg) */}
+          <div className="flex items-center gap-2 shrink-0">
+            <SyncBadge />
             <Sheet>
               <SheetTrigger className="lg:hidden flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:bg-muted transition-colors">
                 <PanelRight className="w-4 h-4" />
@@ -266,15 +322,18 @@ export function DocumentEditor({
           </div>
         </div>
 
-        {/* Row 2: segmented view tabs (always visible, scrollable on tiny screens) */}
-        <div className="flex items-center px-3 sm:px-6 pb-2 overflow-x-auto">
+        {/* View tabs */}
+        <div className="flex items-center px-3 sm:px-6 pb-2">
           <div className="flex items-center p-0.5 gap-0.5 bg-muted rounded-lg">
             {VIEWS.map((v) => (
               <button
                 key={v}
                 onClick={() => {
                   setView(v);
-                  if (v !== "history") setPreviewVersion(null);
+                  if (v !== "history") {
+                    setPreviewContent(null);
+                    setPreviewRev(null);
+                  }
                 }}
                 className={cn(
                   "transition-all font-semibold capitalize text-xs px-3.5 py-1 rounded-md whitespace-nowrap",
@@ -290,154 +349,345 @@ export function DocumentEditor({
         </div>
       </header>
 
-      {/* Draft conflict comparison (shown instead of normal editor when DB is newer than draft) */}
-      {conflictDraft !== null && (
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Banner */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 shrink-0">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              Newer changes were accepted — comparing current version with your draft
-            </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50"
-              onClick={() => {
-                clearDraft(document.id);
-                setConflictDraft(null);
-              }}
-            >
-              <X className="w-3.5 h-3.5 mr-1" />
-              Close
-            </Button>
-          </div>
-
-          {/* Split panes */}
-          <div className="flex max-lg:flex-col max-lg:divide-y max-lg:divide-border flex-1 overflow-hidden divide-x divide-border">
-            {/* Left — current version (editable so you can merge in draft content) */}
-            <div className="flex-1 overflow-y-auto bg-card px-4 py-6 sm:px-10 sm:py-10">
-              <div className="max-w-[680px]">
-                <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
-                  Latest version — editable
-                </p>
-                <div className="text-[28px] font-extrabold text-foreground mb-6">{title}</div>
-                <RichTextEditor
-                  content={content}
-                  onChange={setContent}
-                  editable={canEdit}
-                  className="min-h-[400px]"
-                />
-              </div>
-            </div>
-
-            {/* Right — user's draft (read-only reference) */}
-            <div className="flex-1 overflow-y-auto bg-card px-4 py-6 sm:px-10 sm:py-10">
-              <div className="max-w-[680px]">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-amber-600 dark:text-amber-400">
-                    Your draft
-                  </p>
-                  {canEdit && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
-                      onClick={() => {
-                        setContent(conflictDraft!);
-                        clearDraft(document.id);
-                        setConflictDraft(null);
-                      }}
-                    >
-                      Use draft
-                    </Button>
-                  )}
-                </div>
-                <div className="text-[28px] font-extrabold text-foreground mb-6">{title}</div>
-                <RichTextEditor
-                  content={conflictDraft}
-                  onChange={() => {}}
-                  editable={false}
-                  className="min-h-[400px]"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Editor area */}
-      <div className={cn("flex flex-1 overflow-hidden", conflictDraft !== null && "hidden")}>
-        {/* Main editor */}
+      {/* Main area */}
+      <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-y-auto bg-card px-4 py-6 sm:px-10 sm:py-10">
           {view === "history" ? (
-            previewVersion ? (
-              <div className="max-w-[680px]">
-                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base font-bold text-foreground">Preview</h2>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
-                      v{previewVersion.versionNumber}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      by {previewVersion.createdBy.name}
-                      {" · "}
-                      {format(new Date(previewVersion.createdAt), "MMM d, yyyy HH:mm")}
-                    </span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPreviewVersion(null)}
-                  >
-                    Back to history
-                  </Button>
-                </div>
-                <div className="text-[28px] font-extrabold text-foreground mb-6">{title}</div>
-                <RichTextEditor
-                  content={previewVersion.contentSnapshot}
-                  onChange={() => {}}
-                  editable={false}
-                  className="min-h-[400px]"
-                />
-              </div>
-            ) : (
-              <div className="max-w-[560px]">
-                <h2 className="text-base font-bold text-foreground mb-4">Version History</h2>
-                <VersionTimeline
-                  versions={versions}
-                  documentId={document.id}
-                  currentVersionId={document.currentVersionId}
-                  canRestore={canEdit}
-                  onPreview={setPreviewVersion}
-                  onRestored={() => setPreviewVersion(null)}
-                />
-              </div>
-            )
+            <HistoryPanel
+              docId={document.id}
+              versions={versions}
+              previewContent={previewContent}
+              previewRev={previewRev}
+              canRestore={canEdit}
+              onPreview={handlePreviewRev}
+              onRestore={handleRestore}
+              onBack={() => { setPreviewContent(null); setPreviewRev(null); }}
+            />
           ) : (
-            <div className="max-w-[680px]">
-              {/* Title */}
+            <div className="max-w-[720px]">
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                disabled={!canEdit || view === "preview" || !!previewVersion}
-                className="border px-2 py-1 shadow-none focus-visible:ring-0 mb-6 text-[28px] font-extrabold text-foreground bg-transparent"
+                onBlur={handleTitleBlur}
+                disabled={!canEdit || view === "preview"}
+                className="border-0 border-b px-0 shadow-none focus-visible:ring-0 mb-6 text-[28px] font-extrabold text-foreground bg-transparent rounded-none"
                 placeholder="Untitled document"
               />
-              <RichTextEditor
-                content={currentContent}
-                onChange={setContent}
-                editable={canEdit && view === "edit" && !previewVersion}
-                className="min-h-[400px]"
-              />
+              <div className={cn(
+                "flex flex-col border rounded-lg overflow-hidden bg-card",
+                view === "preview" && "opacity-80"
+              )}>
+                {canEdit && view === "edit" && (
+                  <EditorToolbar editor={editor} />
+                )}
+                <EditorContent editor={editor} className="flex-1" />
+              </div>
             </div>
           )}
         </div>
 
-        {/* Right panel — always visible on lg+, hidden on smaller screens (use Sheet trigger instead) */}
+        {/* Right panel */}
         <aside className="hidden lg:block shrink-0 w-[240px] overflow-y-auto bg-secondary border-l border-border">
           {PanelContent}
         </aside>
       </div>
     </div>
   );
+}
+
+// ── Formatting toolbar ─────────────────────────────────────────────────────────
+
+function ToolbarDivider() {
+  return <div className="w-px h-4 bg-border mx-0.5 shrink-0" />;
+}
+
+function ToolbarButton({
+  active,
+  disabled,
+  onClick,
+  title,
+  children,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => {
+        e.preventDefault(); // keep editor focus
+        onClick();
+      }}
+      title={title}
+      disabled={disabled}
+      className={cn(
+        "flex items-center justify-center w-7 h-7 rounded text-sm transition-colors shrink-0",
+        active
+          ? "bg-primary/10 text-primary"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        disabled && "opacity-40 pointer-events-none"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EditorToolbar({ editor }: { editor: Editor | null }) {
+  if (!editor) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-0.5 px-2.5 py-1.5 border-b border-border bg-muted/40 sticky top-0 z-10">
+      {/* Undo / Redo */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().undo().run()}
+        disabled={!editor.can().undo()}
+        title="Undo (Ctrl+Z)"
+      >
+        <Undo2 className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().redo().run()}
+        disabled={!editor.can().redo()}
+        title="Redo (Ctrl+Y)"
+      >
+        <Redo2 className="w-3.5 h-3.5" />
+      </ToolbarButton>
+
+      <ToolbarDivider />
+
+      {/* Text style */}
+      <ToolbarButton
+        active={editor.isActive("bold")}
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        title="Bold (Ctrl+B)"
+      >
+        <Bold className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("italic")}
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        title="Italic (Ctrl+I)"
+      >
+        <Italic className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("underline")}
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        title="Underline (Ctrl+U)"
+      >
+        <UnderlineIcon className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("strike")}
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+        title="Strikethrough"
+      >
+        <Strikethrough className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("code")}
+        onClick={() => editor.chain().focus().toggleCode().run()}
+        title="Inline code"
+      >
+        <Code className="w-3.5 h-3.5" />
+      </ToolbarButton>
+
+      <ToolbarDivider />
+
+      {/* Headings */}
+      <ToolbarButton
+        active={editor.isActive("heading", { level: 1 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        title="Heading 1"
+      >
+        <Heading1 className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("heading", { level: 2 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        title="Heading 2"
+      >
+        <Heading2 className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("heading", { level: 3 })}
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        title="Heading 3"
+      >
+        <Heading3 className="w-3.5 h-3.5" />
+      </ToolbarButton>
+
+      <ToolbarDivider />
+
+      {/* Lists */}
+      <ToolbarButton
+        active={editor.isActive("bulletList")}
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        title="Bullet list"
+      >
+        <List className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("orderedList")}
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        title="Ordered list"
+      >
+        <ListOrdered className="w-3.5 h-3.5" />
+      </ToolbarButton>
+
+      <ToolbarDivider />
+
+      {/* Block types */}
+      <ToolbarButton
+        active={editor.isActive("blockquote")}
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        title="Blockquote"
+      >
+        <Quote className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        active={editor.isActive("codeBlock")}
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        title="Code block"
+      >
+        <Code2 className="w-3.5 h-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setHorizontalRule().run()}
+        title="Horizontal rule"
+      >
+        <Minus className="w-3.5 h-3.5" />
+      </ToolbarButton>
+    </div>
+  );
+}
+
+// ── History panel ─────────────────────────────────────────────────────────────
+
+function HistoryPanel({
+  docId,
+  versions,
+  previewContent,
+  previewRev,
+  canRestore,
+  onPreview,
+  onRestore,
+  onBack,
+}: {
+  docId: string;
+  versions: VersionEntry[];
+  previewContent: unknown | null;
+  previewRev: number | null;
+  canRestore: boolean;
+  onPreview: (rev: number) => void;
+  onRestore: (rev: number) => void;
+  onBack: () => void;
+}) {
+  if (previewContent !== null && previewRev !== null) {
+    return (
+      <div className="max-w-[680px]">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold">Preview</h2>
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-soft text-warning-strong border border-warning-border">
+              v{previewRev}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {canRestore && (
+              <Button variant="outline" size="sm" onClick={() => onRestore(previewRev)}>
+                Restore this version
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              Back to history
+            </Button>
+          </div>
+        </div>
+        <div
+          className="prose prose-sm max-w-none dark:prose-invert px-4 py-4"
+          dangerouslySetInnerHTML={{ __html: jsonToHtml(previewContent) }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[560px]">
+      <h2 className="text-base font-bold mb-4">Version History</h2>
+      {versions.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No snapshots yet. They are created automatically every 50 edits.</p>
+      ) : (
+        <div className="space-y-2">
+          {versions.map((v) => (
+            <div
+              key={v.id}
+              className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors"
+            >
+              <div>
+                <span className="text-sm font-semibold text-foreground">v{v.rev}</span>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {format(new Date(v.createdAt), "MMM d, yyyy HH:mm")}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={() => onPreview(v.rev)}
+                >
+                  Preview
+                </Button>
+                {canRestore && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() => onRestore(v.rev)}
+                  >
+                    Restore
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function jsonToTiptap(content: unknown): Content {
+  if (!content) return "";
+  if (typeof content === "object") return content as Content;
+  if (typeof content === "string") {
+    try {
+      return JSON.parse(content) as Content;
+    } catch {
+      return content;
+    }
+  }
+  return "";
+}
+
+function jsonToHtml(content: unknown): string {
+  if (!content) return "";
+  if (typeof content === "string") return content;
+  try {
+    const root = content as { content?: Array<{ type: string; content?: Array<{ text?: string }> }> };
+    return (root.content ?? [])
+      .map((node) =>
+        `<p>${(node.content ?? []).map((n) => n.text ?? "").join("")}</p>`
+      )
+      .join("\n");
+  } catch {
+    return "";
+  }
 }

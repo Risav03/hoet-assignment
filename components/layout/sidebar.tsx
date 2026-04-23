@@ -64,8 +64,8 @@ function NavContent({
 
   const workspaceNav = workspaceSlug
     ? [
+      { href: `${base}/documents`, icon: FolderOpen, label: "Documents" },
         { href: `${base}/canvas`, icon: LayoutGrid, label: "Canvas" },
-        { href: `${base}/documents`, icon: FolderOpen, label: "Documents" },
         { href: `${base}/ai-assistant`, icon: Bot, label: "AI Assistant" },
         { href: `${base}/members`, icon: Users, label: "Members" },
         { href: `${base}/activity`, icon: Activity, label: "Activity" },

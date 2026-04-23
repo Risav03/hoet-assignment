@@ -30,6 +30,7 @@ model Workspace {
   updatedAt   DateTime          @updatedAt
   activityLog ActivityLog[]
   boards      Board[]
+  documents   Document[]
   syncOps     SyncOperation[]
   owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   members     WorkspaceMember[]
@@ -199,4 +200,68 @@ enum ActivityAction {
   NODE_DELETED
   EDGE_CREATED
   EDGE_DELETED
+}
+
+// ── Document models ────────────────────────────────────────────────────────────
+
+model Document {
+  id          String             @id @default(cuid())
+  workspaceId String
+  ownerId     String
+  title       String
+  currentRev  Int                @default(0)
+  isArchived  Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ops         DocumentOp[]
+  snapshots   DocumentSnapshot[]
+  conflicts   DocumentConflict[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, isArchived])
+  @@index([workspaceId, createdAt])
+}
+
+model DocumentOp {
+  id         String   @id @default(cuid())
+  documentId String
+  rev        Int
+  clientId   String
+  baseRev    Int
+  diff       Json
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, rev])
+  @@index([documentId, baseRev])
+}
+
+model DocumentSnapshot {
+  id         String   @id @default(cuid())
+  documentId String
+  rev        Int
+  content    Json
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, rev])
+}
+
+model DocumentConflict {
+  id         String                 @id @default(cuid())
+  documentId String
+  baseRev    Int
+  localOp    Json
+  remoteOp   Json
+  status     DocumentConflictStatus @default(PENDING)
+  createdAt  DateTime               @default(now())
+  document   Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, status])
+}
+
+enum DocumentConflictStatus {
+  PENDING
+  RESOLVED
 }

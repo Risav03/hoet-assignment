@@ -1,6 +1,7 @@
 "use client";
 import Dexie, { type Table } from "dexie";
 import type { CanvasNode, CanvasEdge, CanvasOp } from "@/lib/types/canvas";
+import type { Operation as JSONPatchOp } from "fast-json-patch";
 
 // ── Canvas types ──────────────────────────────────────────────────────────────
 
@@ -25,6 +26,46 @@ export interface LocalBoardSnapshot {
   edges: Record<string, CanvasEdge>;
   isArchived: boolean;
   snapshotAt: string;
+}
+
+// ── Document types ─────────────────────────────────────────────────────────────
+
+export type DocOpStatus = "pending" | "sent" | "acked" | "failed";
+
+export interface LocalDoc {
+  docId: string;
+  workspaceId: string;
+  title: string;
+  lastKnownServerRev: number;
+  lastLocalRev: number;
+  isDirty: boolean;
+  updatedAt: string;
+}
+
+export interface LocalDocOp {
+  id?: number;
+  opId: string;
+  docId: string;
+  clientId: string;
+  baseRev: number;
+  diff: JSONPatchOp[];
+  createdAt: string;
+  status: DocOpStatus;
+}
+
+export interface LocalDocSnapshot {
+  snapshotId: string;
+  docId: string;
+  rev: number;
+  content: unknown;
+  createdAt: string;
+}
+
+export interface LocalDocOutboxEntry {
+  opId: string;
+  docId: string;
+  retryCount: number;
+  nextRetryAt: string;
 }
 
 // ── Legacy stubs (kept for backward compat with editor/sync components) ───────
@@ -84,8 +125,14 @@ export interface LocalProposal {
 // ── Database class ─────────────────────────────────────────────────────────────
 
 class CanvasLocalDB extends Dexie {
+  // Canvas tables
   boardOps!: Table<LocalBoardOp, number>;
   boardSnapshots!: Table<LocalBoardSnapshot, string>;
+  // Document tables
+  docMeta!: Table<LocalDoc, string>;
+  docOps!: Table<LocalDocOp, number>;
+  docSnapshots!: Table<LocalDocSnapshot, string>;
+  docOutbox!: Table<LocalDocOutboxEntry, string>;
   // Legacy tables (kept so old Dexie migrations don't error)
   documents!: Table<LocalDocument, string>;
   drafts!: Table<LocalDraft, string>;
@@ -97,6 +144,18 @@ class CanvasLocalDB extends Dexie {
     this.version(1).stores({
       boardOps: "++id, operationId, boardId, workspaceId, status, createdAt",
       boardSnapshots: "id, workspaceId, snapshotAt",
+      documents: "id, workspaceId, updatedAt, isArchived",
+      drafts: "id, documentId, workspaceId, savedAt",
+      syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
+      proposals: "id, workspaceId, documentId, status, createdAt",
+    });
+    this.version(2).stores({
+      boardOps: "++id, operationId, boardId, workspaceId, status, createdAt",
+      boardSnapshots: "id, workspaceId, snapshotAt",
+      docMeta: "docId, workspaceId, isDirty, updatedAt",
+      docOps: "++id, opId, docId, status, createdAt",
+      docSnapshots: "snapshotId, docId, rev",
+      docOutbox: "opId, docId, nextRetryAt",
       documents: "id, workspaceId, updatedAt, isArchived",
       drafts: "id, documentId, workspaceId, savedAt",
       syncQueue: "++id, operationId, workspaceId, documentId, status, createdAt",
