@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getBoardWithState, updateBoard } from "@/lib/dal/board";
+import { getStateManager } from "@/lib/canvas/canvas-state-manager";
 import { z } from "zod";
 import { ZodError } from "zod";
 import { emitSSEEvent } from "@/lib/sse/emitter";
@@ -19,8 +20,26 @@ export async function GET(
 
   const { id } = await params;
   try {
+    // Always fetch from DB for auth check and board metadata
     const board = await getBoardWithState(id, session.user.id);
     if (!board) return NextResponse.json({ error: "Board not found" }, { status: 404 });
+
+    const stateManager = getStateManager();
+    const inMemory = stateManager.getLoadedState(id);
+
+    if (inMemory) {
+      // Override DB state with live in-memory state — the most up-to-date view
+      // for clients joining a session that's already active
+      return NextResponse.json({
+        ...board,
+        state: { nodes: inMemory.nodes, edges: inMemory.edges },
+      });
+    }
+
+    // Board not in memory yet — prime it with the DB state so future ops
+    // are applied against the correct baseline
+    stateManager.primeFromDB(id, board.workspaceId, board.state.nodes, board.state.edges);
+
     return NextResponse.json(board);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";

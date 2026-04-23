@@ -91,6 +91,95 @@ export async function updateBoard(
   return db.board.update({ where: { id: boardId }, data });
 }
 
+/**
+ * Bulk-persists the full in-memory canvas state for a board.
+ * Called by the CanvasStateManager every 30 seconds for dirty boards.
+ * Uses upserts for nodes/edges and deletes for removed entities.
+ */
+export async function persistBoardState(
+  boardId: string,
+  nodes: Record<string, CanvasNode>,
+  edges: Record<string, CanvasEdge>,
+  deletedNodeIds: string[],
+  deletedEdgeIds: string[]
+): Promise<void> {
+  const nodeList = Object.values(nodes);
+  const edgeList = Object.values(edges);
+
+  await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Delete removed edges first (edges reference nodes via FK)
+    if (deletedEdgeIds.length > 0) {
+      await tx.boardEdge.deleteMany({ where: { id: { in: deletedEdgeIds }, boardId } });
+    }
+
+    // Delete removed nodes (cascades edges in DB, but we've already deleted above)
+    if (deletedNodeIds.length > 0) {
+      await tx.boardNode.deleteMany({ where: { id: { in: deletedNodeIds }, boardId } });
+    }
+
+    // Upsert all current nodes
+    for (const node of nodeList) {
+      const nodeWithMeta = node as CanvasNode & { lastModifiedById?: string; lastModifiedByName?: string };
+      await tx.boardNode.upsert({
+        where: { id: node.id },
+        create: {
+          id: node.id,
+          boardId,
+          type: node.type,
+          x: node.x,
+          y: node.y,
+          width: node.width,
+          height: node.height,
+          content: node.content as Prisma.InputJsonValue,
+          updatedAt: new Date(node.updatedAt),
+          lastModifiedById: nodeWithMeta.lastModifiedById ?? null,
+          lastModifiedByName: nodeWithMeta.lastModifiedByName ?? null,
+        },
+        update: {
+          type: node.type,
+          x: node.x,
+          y: node.y,
+          width: node.width,
+          height: node.height,
+          content: node.content as Prisma.InputJsonValue,
+          updatedAt: new Date(node.updatedAt),
+          lastModifiedById: nodeWithMeta.lastModifiedById ?? null,
+          lastModifiedByName: nodeWithMeta.lastModifiedByName ?? null,
+        },
+      });
+    }
+
+    // Upsert all current edges
+    for (const edge of edgeList) {
+      await tx.boardEdge.upsert({
+        where: {
+          boardId_sourceId_targetId: {
+            boardId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+          },
+        },
+        create: {
+          id: edge.id,
+          boardId,
+          sourceId: edge.sourceId,
+          targetId: edge.targetId,
+          label: edge.label ?? null,
+        },
+        update: {
+          label: edge.label ?? null,
+        },
+      });
+    }
+
+    // Touch board.updatedAt so consumers know when it was last written
+    await tx.board.update({
+      where: { id: boardId },
+      data: { updatedAt: new Date() },
+    });
+  });
+}
+
 export interface ApplyOpResult {
   applied: boolean;
   conflict?: ConflictInfo;
