@@ -5,6 +5,15 @@ import { getLocalDB } from "@/lib/db/local";
 import { uint8ToBase64, base64ToUint8 } from "@/lib/yjs/encoding";
 import { useDocEventSource } from "@/lib/hooks/use-doc-event-source";
 
+async function fetchAndApplyServerUpdates(docId: string, ydoc: Y.Doc) {
+  const res = await fetch(`/api/docs/${docId}/yjs`);
+  if (!res.ok) return;
+  const data = (await res.json()) as { updates: string[] };
+  for (const b64 of data.updates ?? []) {
+    Y.applyUpdate(ydoc, base64ToUint8(b64), "remote-initial");
+  }
+}
+
 const FLUSH_INTERVAL_MS = 5_000;
 
 export type YjsSyncStatus = "synced" | "syncing" | "pending" | "offline";
@@ -72,16 +81,7 @@ export function useYjsSync({
 
     async function fetchInitial() {
       try {
-        const res = await fetch(`/api/docs/${docId}/yjs`);
-        if (!res.ok) return;
-        const data = await res.json() as { updates: string[] };
-        if (data.updates?.length) {
-          for (const b64 of data.updates) {
-            // Tag with "remote-initial" so the ydoc.on("update") handler
-            // skips writing these back to the Dexie outbox.
-            Y.applyUpdate(ydoc!, base64ToUint8(b64), "remote-initial");
-          }
-        }
+        await fetchAndApplyServerUpdates(docId, ydoc!);
         onInitialSyncRef.current?.();
       } catch (err) {
         console.error("[use-yjs-sync] initial fetch failed", err);
@@ -209,9 +209,14 @@ export function useYjsSync({
 
   // ── Step 4: online/offline transitions ──────────────────────────────────────
   useEffect(() => {
-    function handleOnline() {
+    async function handleOnline() {
       setIsOffline(false);
-      void flush();
+      // Flush local pending updates and pull missed server updates in parallel.
+      // Yjs CRDT guarantees idempotency, so re-applying already-seen updates is safe.
+      await Promise.all([
+        flush(),
+        ydoc ? fetchAndApplyServerUpdates(docId, ydoc) : Promise.resolve(),
+      ]);
     }
     function handleOffline() {
       setIsOffline(true);
@@ -222,7 +227,7 @@ export function useYjsSync({
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [flush]);
+  }, [docId, flush, ydoc]);
 
   // ── Step 5: SSE listener for remote Yjs updates ─────────────────────────────
   // Shares a single EventSource connection with useDocPresence via the
