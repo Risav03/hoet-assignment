@@ -217,6 +217,7 @@ enum OperationType {
   DELETE_NODE
   CONNECT_NODES
   DISCONNECT_NODES
+  DELETE_EDGE
 }
 
 enum ActivityAction {
