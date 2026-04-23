@@ -50,11 +50,15 @@ export function useBoardData(boardId: string | null) {
     queryKey: ["board", boardId],
     queryFn: async () => {
       const data = await fetchBoard(boardId!);
-      initBoard(data.id, data.state);
+      const hasPending = useCanvasStore.getState().pendingOps.length > 0;
+      if (!hasPending) {
+        initBoard(data.id, data.state);
+      }
       return data;
     },
     enabled: !!boardId,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchInterval: 1_000,
   });
 }
 

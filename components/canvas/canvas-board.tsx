@@ -7,6 +7,7 @@ import { NodeComponent } from "./node-component";
 import { EdgeComponent } from "./edge-component";
 import { PresenceLayer } from "./presence-layer";
 import { CanvasToolbar } from "./toolbar";
+import { NodePropertiesPanel } from "./node-properties-panel";
 import { useCanvasDispatch } from "@/lib/hooks/use-canvas";
 import { useCanvasPresence } from "@/lib/hooks/use-canvas-presence";
 import type { CanvasNode, CanvasEdge } from "@/lib/types/canvas";
@@ -39,9 +40,11 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
+  const selectedEdgeId = useCanvasStore((s) => s.selectedEdgeId);
   const stagePos = useCanvasStore((s) => s.stagePos);
   const stageScale = useCanvasStore((s) => s.stageScale);
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode);
+  const setSelectedEdge = useCanvasStore((s) => s.setSelectedEdge);
   const setStagePos = useCanvasStore((s) => s.setStagePos);
   const setStageScale = useCanvasStore((s) => s.setStageScale);
 
@@ -66,21 +69,23 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
   // Keyboard delete
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
+      if (e.key === "Delete" || e.key === "Backspace") {
         const target = e.target as HTMLElement;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-        handleDeleteSelected();
+        if (selectedNodeId) handleDeleteSelected();
+        else if (selectedEdgeId) handleDeleteEdge(selectedEdgeId);
       }
       if (e.key === "Escape") {
         setConnectMode(false);
         setConnectSource(null);
         setSelectedNode(null);
+        setSelectedEdge(null);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNodeId]);
+  }, [selectedNodeId, selectedEdgeId]);
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -132,13 +137,14 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       if (e.target === e.target.getStage()) {
         setSelectedNode(null);
+        setSelectedEdge(null);
         if (connectMode) {
           setConnectMode(false);
           setConnectSource(null);
         }
       }
     },
-    [setSelectedNode, connectMode]
+    [setSelectedNode, setSelectedEdge, connectMode]
   );
 
   const handleNodeSelect = useCallback(
@@ -224,11 +230,22 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
     setSelectedNode(node.id);
   }, [boardId, dimensions, stagePos, stageScale, nodes, dispatch, setSelectedNode]);
 
+  const handleDeleteEdge = useCallback(
+    (edgeId: string) => {
+      dispatch({ type: "DELETE_EDGE", payload: { id: edgeId } });
+      setSelectedEdge(null);
+    },
+    [dispatch, setSelectedEdge]
+  );
+
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedNodeId) return;
-    dispatch({ type: "DELETE_NODE", payload: { id: selectedNodeId } });
-    setSelectedNode(null);
-  }, [selectedNodeId, dispatch, setSelectedNode]);
+    if (selectedNodeId) {
+      dispatch({ type: "DELETE_NODE", payload: { id: selectedNodeId } });
+      setSelectedNode(null);
+    } else if (selectedEdgeId) {
+      handleDeleteEdge(selectedEdgeId);
+    }
+  }, [selectedNodeId, selectedEdgeId, dispatch, setSelectedNode, handleDeleteEdge]);
 
   const handleFitToScreen = useCallback(() => {
     const nodeList = Object.values(nodes);
@@ -327,6 +344,7 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
         onClick={handleStageClick}
         onTap={() => {
           setSelectedNode(null);
+          setSelectedEdge(null);
           if (connectMode) {
             setConnectMode(false);
             setConnectSource(null);
@@ -343,8 +361,8 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
               edge={edge}
               sourceNode={nodes[edge.sourceId]}
               targetNode={nodes[edge.targetId]}
-              isSelected={selectedNodeId === edge.id}
-              onSelect={setSelectedNode}
+              isSelected={selectedEdgeId === edge.id}
+              onSelect={setSelectedEdge}
             />
           ))}
         </Layer>
@@ -368,6 +386,33 @@ export function CanvasBoard({ boardId, workspaceId }: CanvasBoardProps) {
         {/* Presence layer — other users' cursors */}
         <PresenceLayer />
       </Stage>
+
+      {/* Node properties panel */}
+      {selectedNodeId && nodes[selectedNodeId] && (
+        <NodePropertiesPanel
+          node={nodes[selectedNodeId]}
+          stagePos={stagePos}
+          stageScale={stageScale}
+          onColorChange={(color) =>
+            dispatch({
+              type: "UPDATE_NODE",
+              payload: {
+                id: selectedNodeId,
+                content: { ...nodes[selectedNodeId].content, color },
+              },
+            })
+          }
+          onFontSizeChange={(fontSize) =>
+            dispatch({
+              type: "UPDATE_NODE",
+              payload: {
+                id: selectedNodeId,
+                content: { ...nodes[selectedNodeId].content, fontSize },
+              },
+            })
+          }
+        />
+      )}
     </div>
   );
 }

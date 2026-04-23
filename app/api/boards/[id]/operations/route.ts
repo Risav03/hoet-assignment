@@ -9,7 +9,7 @@ import type { CanvasOp } from "@/lib/types/canvas";
 const canvasOpSchema = z.object({
   operationId: z.string().min(1).max(128),
   op: z.object({
-    type: z.enum(["CREATE_NODE", "MOVE_NODE", "UPDATE_NODE", "DELETE_NODE", "CONNECT_NODES"]),
+    type: z.enum(["CREATE_NODE", "MOVE_NODE", "UPDATE_NODE", "DELETE_NODE", "CONNECT_NODES", "DELETE_EDGE"]),
     payload: z.record(z.string(), z.unknown()),
   }),
   createdAt: z.string().datetime(),

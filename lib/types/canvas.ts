@@ -44,14 +44,16 @@ export type CanvasOpType =
   | "MOVE_NODE"
   | "UPDATE_NODE"
   | "DELETE_NODE"
-  | "CONNECT_NODES";
+  | "CONNECT_NODES"
+  | "DELETE_EDGE";
 
 export type CanvasOp =
   | { type: "CREATE_NODE"; payload: CanvasNode }
   | { type: "MOVE_NODE"; payload: { id: string; x: number; y: number } }
   | { type: "UPDATE_NODE"; payload: Partial<CanvasNode> & { id: string } }
   | { type: "DELETE_NODE"; payload: { id: string } }
-  | { type: "CONNECT_NODES"; payload: CanvasEdge };
+  | { type: "CONNECT_NODES"; payload: CanvasEdge }
+  | { type: "DELETE_EDGE"; payload: { id: string } };
 
 export interface PresenceData {
   userId: string;

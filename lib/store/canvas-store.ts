@@ -16,6 +16,7 @@ interface CanvasStoreState {
   edges: Record<string, CanvasEdge>;
   pendingOps: PendingOp[];
   selectedNodeId: string | null;
+  selectedEdgeId: string | null;
   presence: Record<string, PresenceData>;
   stagePos: { x: number; y: number };
   stageScale: number;
@@ -31,6 +32,7 @@ interface CanvasStoreActions {
   updatePresence: (data: PresenceData) => void;
   removePresence: (userId: string) => void;
   setSelectedNode: (id: string | null) => void;
+  setSelectedEdge: (id: string | null) => void;
   setStagePos: (pos: { x: number; y: number }) => void;
   setStageScale: (scale: number) => void;
   reset: () => void;
@@ -44,6 +46,7 @@ const initialState: CanvasStoreState = {
   edges: {},
   pendingOps: [],
   selectedNodeId: null,
+  selectedEdgeId: null,
   presence: {},
   stagePos: { x: 0, y: 0 },
   stageScale: 1,
@@ -89,6 +92,12 @@ function applyOpToState(
     case "CONNECT_NODES":
       state.edges[op.payload.id] = op.payload;
       break;
+    case "DELETE_EDGE":
+      delete state.edges[op.payload.id];
+      if (state.selectedNodeId === op.payload.id) {
+        state.selectedNodeId = null;
+      }
+      break;
   }
 }
 
@@ -102,6 +111,8 @@ export const useCanvasStore = create<CanvasStore>()(
         state.nodes = nodes;
         state.edges = edges;
         state.pendingOps = [];
+        state.selectedNodeId = null;
+        state.selectedEdgeId = null;
         state.presence = {};
       }),
 
@@ -159,6 +170,9 @@ export const useCanvasStore = create<CanvasStore>()(
           case "CONNECT_NODES":
             delete state.edges[op.payload.id];
             break;
+          case "DELETE_EDGE":
+            // Can't restore edge without storing prior state
+            break;
         }
       }),
 
@@ -175,6 +189,13 @@ export const useCanvasStore = create<CanvasStore>()(
     setSelectedNode: (id) =>
       set((state) => {
         state.selectedNodeId = id;
+        state.selectedEdgeId = null;
+      }),
+
+    setSelectedEdge: (id) =>
+      set((state) => {
+        state.selectedEdgeId = id;
+        state.selectedNodeId = null;
       }),
 
     setStagePos: (pos) =>

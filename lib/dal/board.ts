@@ -178,6 +178,12 @@ export async function applyBoardOp(
         });
         break;
       }
+      case "DELETE_EDGE": {
+        await tx.boardEdge.deleteMany({
+          where: { id: op.payload.id, boardId },
+        });
+        break;
+      }
     }
 
     const proposal = await tx.changeProposal.create({

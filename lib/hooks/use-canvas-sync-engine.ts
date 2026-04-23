@@ -11,8 +11,8 @@ import {
 import { useNetworkStatus } from "./use-network-status";
 import type { SSEMessage } from "./use-sse";
 
-const BASE_INTERVAL = 10_000;
-const RETRY_BACKOFF = [3_000, 6_000, 12_000, 24_000, 60_000];
+const BASE_INTERVAL = 1_000;
+const RETRY_INTERVAL = 3_000;
 
 export function useCanvasSyncEngine(boardId: string | null) {
   const { data: session } = useSession();
@@ -26,7 +26,7 @@ export function useCanvasSyncEngine(boardId: string | null) {
       await runCanvasSyncEngine(boardId);
       retryCountRef.current = 0;
     } catch {
-      retryCountRef.current = Math.min(retryCountRef.current + 1, RETRY_BACKOFF.length - 1);
+      retryCountRef.current = 1;
     }
   }, [boardId, session?.user?.id, isOnline]);
 
@@ -36,10 +36,7 @@ export function useCanvasSyncEngine(boardId: string | null) {
     sync();
 
     function schedule() {
-      const delay =
-        retryCountRef.current > 0
-          ? RETRY_BACKOFF[retryCountRef.current - 1]
-          : BASE_INTERVAL;
+      const delay = retryCountRef.current > 0 ? RETRY_INTERVAL : BASE_INTERVAL;
       timerRef.current = setTimeout(async () => {
         await sync();
         schedule();

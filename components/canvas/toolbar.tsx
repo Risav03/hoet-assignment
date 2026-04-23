@@ -23,6 +23,8 @@ export function CanvasToolbar({
   onToggleConnectMode,
 }: ToolbarProps) {
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
+  const selectedEdgeId = useCanvasStore((s) => s.selectedEdgeId);
+  const hasSelection = !!(selectedNodeId || selectedEdgeId);
   const pendingCount = useCanvasStore((s) => s.pendingOps.filter((o) => o.status === "pending").length);
   const stageScale = useCanvasStore((s) => s.stageScale);
 
@@ -39,14 +41,13 @@ export function CanvasToolbar({
         label="Connect nodes"
         onClick={onToggleConnectMode}
         active={connectMode}
-        disabled={!selectedNodeId}
       />
 
       <ToolbarButton
         icon={<Trash2 className="w-4 h-4" />}
         label="Delete selected"
         onClick={onDeleteSelected}
-        disabled={!selectedNodeId}
+        disabled={!hasSelection}
         variant="danger"
       />
 

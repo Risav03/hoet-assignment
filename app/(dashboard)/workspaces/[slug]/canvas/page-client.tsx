@@ -66,7 +66,7 @@ export function CanvasPageClient({
   return (
     <div className="flex h-full">
       {/* Board sidebar */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border bg-sidebar h-full">
+      {/* <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border bg-sidebar h-full">
         <div className="flex items-center gap-2 px-4 h-12 border-b border-border">
           <LayoutGrid className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-semibold text-foreground">Boards</span>
@@ -160,7 +160,7 @@ export function CanvasPageClient({
             </button>
           </div>
         )}
-      </aside>
+      </aside> */}
 
       {/* Canvas area */}
       <div className="flex flex-col flex-1 min-w-0">
