@@ -141,18 +141,15 @@ export function DocumentEditor({
     }
   }, [document.id]);
 
-  // Yjs sync engine: outbox flush + SSE ingestion
+  // Yjs sync engine: outbox flush + SSE ingestion.
+  // Version snapshots are now created server-side (count-based + time-based
+  // via cron), so no client-side content serialisation is needed here.
   const { isSyncing, isOffline, pendingCount, initialSyncDone } = useYjsSync({
     ydoc: ydocRef.current,
     docId: document.id,
     onInitialSync: () => {
       // Nothing extra needed — Collaboration extension reacts to ydoc changes
     },
-    // Provide current Tiptap JSON so the server can write DocumentSnapshot
-    // entries that keep the history panel up-to-date.
-    getSnapshot: () => editor?.getJSON(),
-    // Refresh the versions list as soon as the server confirms a new snapshot.
-    onSnapshotSaved: fetchVersions,
   });
 
   // Only render sync-state UI after client mount to avoid hydration mismatch

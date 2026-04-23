@@ -5,7 +5,6 @@ import { getLocalDB } from "@/lib/db/local";
 import { uint8ToBase64, base64ToUint8 } from "@/lib/yjs/encoding";
 
 const FLUSH_INTERVAL_MS = 5_000;
-const LOCAL_ORIGIN = "local-client";
 
 export type YjsSyncStatus = "synced" | "syncing" | "pending" | "offline";
 
@@ -23,18 +22,7 @@ interface UseYjsSyncOptions {
   docId: string;
   /** Called once the initial server state has been applied to ydoc. */
   onInitialSync?: () => void;
-  /**
-   * Return the current editor content as a plain JSON object.
-   * When provided, the hook periodically sends this to the server so a new
-   * DocumentSnapshot + incremented currentRev are created for the history panel.
-   */
-  getSnapshot?: () => unknown;
-  /** Called whenever the server confirms a new DocumentSnapshot was created. */
-  onSnapshotSaved?: () => void;
 }
-
-/** How many successful flushes between history snapshot writes (~50 s at 5 s interval). */
-const SNAPSHOT_EVERY_N_FLUSHES = 10;
 
 /**
  * Manages the full Yjs sync lifecycle:
@@ -43,8 +31,8 @@ const SNAPSHOT_EVERY_N_FLUSHES = 10;
  *    applies them to the local Y.Doc so it starts in sync with the server.
  *
  * 2. On every local update: writes the raw binary update to the Dexie
- *    `yUpdates` outbox (status=pending), tagged with `LOCAL_ORIGIN` so the
- *    ydoc.on("update") listener can skip remote-applied updates.
+ *    `yUpdates` outbox (status=pending), tagged so the ydoc.on("update")
+ *    listener can skip remote-applied updates.
  *
  * 3. On a periodic interval (and on reconnect): flushes all pending rows from
  *    the Dexie outbox via POST /api/docs/:docId/yjs, marks them as acked.
@@ -57,8 +45,6 @@ export function useYjsSync({
   ydoc,
   docId,
   onInitialSync,
-  getSnapshot,
-  onSnapshotSaved,
 }: UseYjsSyncOptions): YjsSyncState {
   const [isOffline, setIsOffline] = useState(
     typeof navigator !== "undefined" ? !navigator.onLine : false
@@ -70,17 +56,10 @@ export function useYjsSync({
   const flushingRef = useRef(false);
   const onInitialSyncRef = useRef(onInitialSync);
   onInitialSyncRef.current = onInitialSync;
-  const getSnapshotRef = useRef(getSnapshot);
-  getSnapshotRef.current = getSnapshot;
-  const onSnapshotSavedRef = useRef(onSnapshotSaved);
-  onSnapshotSavedRef.current = onSnapshotSaved;
 
   // Pending update accumulator: collect deltas between debounce flushes
   const pendingUpdatesRef = useRef<Uint8Array[]>([]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Count successful flushes so we know when to attach a history snapshot
-  const flushCountRef = useRef(0);
 
   // ── Step 1: initial server sync ─────────────────────────────────────────────
   useEffect(() => {
@@ -161,7 +140,7 @@ export function useYjsSync({
   }, [docId, ydoc]);
 
   // ── Step 3: flush outbox to server ──────────────────────────────────────────
-  const flush = useCallback(async (forceSnapshot = false) => {
+  const flush = useCallback(async () => {
     if (!ydoc || flushingRef.current || !navigator.onLine) return;
 
     const db = getLocalDB();
@@ -174,39 +153,17 @@ export function useYjsSync({
     flushingRef.current = true;
     setIsSyncing(true);
 
-    // Attach a history snapshot every N successful flushes of genuine user edits,
-    // or when forced (e.g. tab hidden).  The first-flush special case has been
-    // removed: it was triggering a snapshot — and a currentRev increment — on
-    // every page open, even when the outbox only contained re-sent server data.
-    flushCountRef.current += 1;
-    const attachSnapshot =
-      forceSnapshot ||
-      flushCountRef.current % SNAPSHOT_EVERY_N_FLUSHES === 0;
-    const snapshotContent = attachSnapshot ? getSnapshotRef.current?.() : undefined;
-
-    for (let i = 0; i < pending.length; i++) {
-      const row = pending[i];
-      // Only attach the snapshot JSON to the very last update in the batch so
-      // we don't create duplicate history entries for a single flush.
-      const isLast = i === pending.length - 1;
+    for (const row of pending) {
       try {
-        const b64 = uint8ToBase64(row.update);
-        const body: Record<string, unknown> = { update: b64 };
-        if (isLast && snapshotContent !== undefined) {
-          body.content = snapshotContent;
-        }
-
         const res = await fetch(`/api/docs/${docId}/yjs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ update: uint8ToBase64(row.update) }),
         });
 
         if (res.ok) {
           await db.yUpdates.update(row.id!, { status: "acked" });
           setPendingCount((c) => Math.max(0, c - 1));
-          const json = await res.json().catch(() => ({})) as { snapshotCreated?: boolean };
-          if (json.snapshotCreated) onSnapshotSavedRef.current?.();
         } else {
           await db.yUpdates.update(row.id!, { status: "pending" });
         }
@@ -225,15 +182,11 @@ export function useYjsSync({
     return () => clearInterval(timer);
   }, [flush]);
 
-  // Flush on visibility change — force a history snapshot when hiding so the
-  // last edit is always captured even if the flush counter hasn't reached N yet.
+  // Flush on visibility change — drain the outbox immediately when the tab hides
+  // so edits aren't lost if the user closes the tab before the next interval.
   useEffect(() => {
     function handleVisibility() {
-      if (document.visibilityState === "hidden") {
-        void flush(true); // force snapshot
-      } else {
-        void flush();
-      }
+      void flush();
     }
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
@@ -290,8 +243,6 @@ export function useYjsSync({
     if (pendingCount > 0) return "pending";
     return "synced";
   })();
-
-  void LOCAL_ORIGIN; // referenced in comment; suppress unused warning
 
   return { status, isSyncing, isOffline, pendingCount, initialSyncDone };
 }

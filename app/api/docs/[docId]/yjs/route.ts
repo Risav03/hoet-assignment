@@ -4,10 +4,8 @@ import { db } from "@/lib/db";
 import { requireDocumentMember } from "@/lib/dal/document";
 import { emitDocYjsUpdate } from "@/lib/sse/redis-emitter";
 import { isValidBase64 } from "@/lib/yjs/encoding";
+import { maybeCreateDocSnapshot } from "@/lib/yjs/server-snapshot";
 import * as Y from "yjs";
-import type { Prisma } from "@/app/generated/prisma/client";
-
-type InputJson = Prisma.InputJsonValue;
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,8 +13,8 @@ export const runtime = "nodejs";
 // Maximum allowed payload size for a single Yjs update (1 MB encoded as base64)
 const MAX_UPDATE_BYTES = 1_048_576;
 
-// Threshold: once this many incremental updates accumulate after the last snapshot,
-// a new snapshot is written to keep future GET responses lean.
+// Threshold: once this many incremental updates accumulate after the last CRDT
+// snapshot, a new compaction is written to keep future GET responses lean.
 const SNAPSHOT_THRESHOLD = 100;
 
 // ── GET /api/docs/[docId]/yjs ─────────────────────────────────────────────────
@@ -92,14 +90,14 @@ export async function POST(
     return NextResponse.json({ error: "Viewers cannot edit documents" }, { status: 403 });
   }
 
-  let body: { update?: unknown; content?: unknown };
+  let body: { update?: unknown };
   try {
-    body = await req.json() as { update?: unknown; content?: unknown };
+    body = await req.json() as { update?: unknown };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { update, content } = body;
+  const { update } = body;
 
   if (typeof update !== "string" || !update) {
     return NextResponse.json({ error: "update must be a non-empty string" }, { status: 400 });
@@ -132,47 +130,18 @@ export async function POST(
   // Fire-and-forget SSE broadcast — never blocks the response.
   void emitDocYjsUpdate(docId, update);
 
-  // When the client attaches a Tiptap JSON snapshot, create a new
-  // DocumentSnapshot and bump currentRev so the history panel stays up-to-date.
-  let snapshotCreated = false;
-  if (content !== undefined && content !== null && typeof content === "object") {
-    await saveHistorySnapshot(docId, content as InputJson);
-    snapshotCreated = true;
-  }
+  // Server-side version history: create a DocumentSnapshot every ~25 Yjs
+  // updates without relying on the client to send Tiptap JSON content.
+  void maybeCreateDocSnapshot(docId);
 
-  // Opportunistically write a Yjs CRDT snapshot when enough incremental updates
-  // have accumulated so future GET responses stay lean.
+  // Opportunistically write a Yjs CRDT compaction snapshot when enough
+  // incremental updates have accumulated so future GET responses stay lean.
   void maybeSnapshot(docId);
 
-  return NextResponse.json({ success: true, snapshotCreated });
+  return NextResponse.json({ success: true });
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-
-/**
- * Increment currentRev and persist a DocumentSnapshot so the history panel
- * keeps getting new entries as the user edits via the Yjs pipeline.
- * Runs in the background — failures are logged but never bubble up.
- */
-async function saveHistorySnapshot(docId: string, content: InputJson): Promise<void> {
-  try {
-    const doc = await db.document.update({
-      where: { id: docId },
-      data: { currentRev: { increment: 1 } },
-      select: { currentRev: true },
-    });
-
-    await db.documentSnapshot.create({
-      data: {
-        documentId: docId,
-        rev: doc.currentRev,
-        content,
-      },
-    });
-  } catch (err) {
-    console.error("[yjs/route] saveHistorySnapshot failed", err);
-  }
-}
 
 async function maybeSnapshot(docId: string): Promise<void> {
   try {

@@ -1,8 +1,12 @@
 import { redis } from "@/lib/redis";
 import { workspaceStateKey } from "@/lib/sse/redis-emitter";
 import { boardStateKey, type RedisBoardState } from "@/lib/sync/board-redis";
+import { maybeCreateDocSnapshot } from "@/lib/yjs/server-snapshot";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/app/generated/prisma/client";
+
+// Maximum number of documents to snapshot per cron run to stay within execution limits.
+const DOCS_PER_CRON_RUN = 20;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -127,9 +131,36 @@ export async function GET() {
       }
     }
 
+    // ── Snapshot active documents (time-based version history) ──────────────
+    // Find documents that have received Yjs updates in the last minute but
+    // whose latest DocumentSnapshot predates those updates (or have none).
+    // Force-mode bypasses the count threshold so at least one snapshot per
+    // minute of activity is always recorded.
+    let docSnapshotsCreated = 0;
+    try {
+      const activeCutoff = new Date(Date.now() - 60_000);
+
+      const activeDocs = await db.document.findMany({
+        where: {
+          yjsUpdates: {
+            some: { createdAt: { gt: activeCutoff } },
+          },
+        },
+        select: { id: true },
+        take: DOCS_PER_CRON_RUN,
+      });
+
+      for (const { id } of activeDocs) {
+        const created = await maybeCreateDocSnapshot(id, { force: true });
+        if (created) docSnapshotsCreated++;
+      }
+    } catch (err) {
+      console.error("[flush-workspaces] doc snapshot pass failed", err);
+    }
+
     return Response.json({
       success: true,
-      flushed: { boards: boardIds.length, workspaces: workspaceIds.length },
+      flushed: { boards: boardIds.length, workspaces: workspaceIds.length, docSnapshots: docSnapshotsCreated },
     });
   } catch (err) {
     console.error("[flush-workspaces] flush error", err);
