@@ -53,7 +53,6 @@ export type CanvasOp =
   | { type: "UPDATE_NODE"; payload: Partial<CanvasNode> & { id: string } }
   | { type: "DELETE_NODE"; payload: { id: string } }
   | { type: "CONNECT_NODES"; payload: CanvasEdge }
-  | { type: "DELETE_EDGE"; payload: { id: string } };
 
 export interface PresenceData {
   userId: string;
